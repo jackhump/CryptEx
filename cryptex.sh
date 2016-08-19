@@ -1,27 +1,33 @@
-#ULTIMATE EXTENDED HUNTING
+# CRYPTEX
+
+# Jack Humphrey 
+# UCL
+
 ##Given a BAM file, extract the spliced reads and convert these to a BED file. Intersect with an intron bed file.
 ## Output should be a list of all spliced intronic reads. This will be the basis of my cryptic exon hunting
 # this is to speed up debugging
 set -euo pipefail
 
 ## these variables will be arguments passed to the pipeline script by the submission script
-oFolder=/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/
+oFolder=/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/CryptEx
+Step2_master=${oFolder}/Step2_master.sh
 
-Step2_master=${oFolder}/pipeline/Step2_master.sh
-
+# R scripts for CryptEx
 Rbin=/share/apps/R/bin/R
-dexseqFinalProcessR=/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/pipeline/forked_scripts/Forked_RNASeq_pipeline/forked_dexseq_pipeline_v2.R
-countPrepareR=/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/pipeline/forked_scripts/Forked_RNASeq_pipeline/forked_counts_prepare_pipeline.R
-deseqFinalProcessR=//cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/pipeline/forked_scripts/Forked_RNASeq_pipeline/forked_deseq2_pipeline.R
-RbedforIGV=${oFolder}/pipeline/hit_bedmaker.R
-R_support_chopper=${oFolder}/pipeline/support_frame_chopper.R
-R_splice_junction_analyzer=${oFolder}/pipeline/splice_junction_analyzer.R
-R_functional_enrichment=${oFolder}/pipeline/Functional_Enrichment.R
+dexseqFinalProcessR=${oFolder}/dexseq/forked_dexseq_pipeline_v2.R
+countPrepareR=${oFolder}/dexseq/forked_counts_prepare_pipeline.R
+deseqFinalProcessR=${oFolder}/dexseq/forked_deseq2_pipeline.R
+R_support_chopper=${oFolder}/support_frame_chopper.R
+
+# R scripts for downstream analyses
+R_splice_junction_analyzer=${oFolder}/downstream_analyses/splice_junction_analyzer.R
+R_functional_enrichment=${oFolder}/downstream_analyses/Functional_Enrichment.R
+
+# dexseq_count.py comes with HTSeq
 pycount=/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/intron_retention/dexseq_count.py
 
-
-#for when scratch is down
-if [ ! -e $dexseqFinalProcessR ]; then dexseqFinalProcessR=/cluster/project8/vyp/vincent/Software/RNASeq_pipeline/dexseq_pipeline_v2.R;fi
+# the annotation files need to be flexible
+# ideally the user should provide just one GFF file and then CryptEx extracts the exons and calculates the introns
 
 
 #for testing only
@@ -42,7 +48,6 @@ cohort_merger=no
 strict_num=500
 
 
-# Running the whole pipeline independently of me.
 # Each step in the pipeline can be run independently of every other step but for efficiency purposes I'd like to be able to run each step in series automatically. 
 # Each step's job script needs a unique ID and variable name
 
@@ -52,6 +57,9 @@ until [ -z $1 ];do
 	--species)
 	shift
 	species=$1;;
+	--annotation_file)
+	shift
+	annotation_file=$1;;
 	--protein)
 	shift
 	protein=$1;;
@@ -61,6 +69,9 @@ until [ -z $1 ];do
 	--support)
 	shift
 	support=$1;;
+	--gff)
+	shift
+	gff=$1;;
 	--splice_extractor)
 	shift
 	splice_extractor=$1;;
@@ -125,27 +136,33 @@ for folder in ${oFolder} ${results} ${reference} ${clusterFolder} ${clusterFolde
     if [ ! -e $folder ]; then mkdir $folder; fi
 done
 
+if [[ "$gff" == "hardcoded" ]]; then
+	if [[ "$species" == "mouse" ]];then
+	gff_base=/cluster/scratch3/vyp-scratch2/reference_datasets/RNASeq/Mouse/Mus_musculus.GRCm38.82_fixed
+	elif [[ "$species" == "human" ]];then
+	gff_base= /cluster/scratch3/vyp-scratch2/reference_datasets/RNASeq/Human_hg38/Homo_sapiens.GRCh38.82_fixed
+	fi
+fi
 
-# assigning the correct GFF and bed reference files
-if [ $species == "mouse" ]
-	then #GFF_introns=/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain//intron_retention/mouse_iGenomes_GRCm38_with_ensembl.introns.gff
-	intron_GFF=/cluster/scratch3/vyp-scratch2/reference_datasets/RNASeq/Mouse/Mus_musculus.GRCm38.82_fixed_introns_only.gff
-	exon_GFF=/cluster/scratch3/vyp-scratch2/reference_datasets/RNASeq/Mouse/Mus_musculus.GRCm38.82_fixed_exons_only.gff		
+if [[ "$annotation_file" == "hardcoded" ]];then
+	if [[ "$species" == "mouse" ]];then
 	annotation_file=/cluster/project8/vyp/vincent/Software/RNASeq_pipeline/bundle/mouse/biomart/biomart_annotations_mouse.tab
-fi
-if [ $species == "human" ]
-        then #GFF_introns=/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/ling_cryptic_hunting/cryptic_gff_creator/ling_human/GFF_files/Homo_sapiens_GRCh38_78_fixed_introns_only.gff
-	#GFF_exons=/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/ling_cryptic_hunting/cryptic_gff_creator/ling_human/GFF_files/Homo_sapiens_GRCh38_78_fixed_exons_only.gff
-	intron_GFF=/cluster/scratch3/vyp-scratch2/reference_datasets/RNASeq/Human_hg38/Homo_sapiens.GRCh38.82_fixed_introns_only.gff
-	exon_GFF=/cluster/scratch3/vyp-scratch2/reference_datasets/RNASeq/Human_hg38/Homo_sapiens.GRCh38.82_fixed_exons_only.gff
-	annotation_file=/cluster/project8/vyp/vincent/Software/RNASeq_pipeline/bundle/human_hg38/biomart/biomart_annotations_human.tab
+	elif [[ "$species" == "human" ]];then
+	 annotation_file=/cluster/project8/vyp/vincent/Software/RNASeq_pipeline/bundle/human_hg38/biomart/biomart_annotations_human.tab
 fi
 
-if [ ! -e $intron_GFF ];then
-	intron_GFF=${oFolder}/reference/${species}_introns.bed
-elif [ ! -e $exon_GFF ];then
-	exon_GFF=${oFolder}/reference/${species}_exons.gff
+intron_GFF=${gff_base}_introns_only.gff
+exon_GFF=${gff_base}_exons_only.gff
+
+# create intron_GFF and exon_GFF from the supplied GFF file. 
+
+if [ ! -e $intron_GFF ]; then
+	echo "creating intron GFF"
+	Rscript intron_GFF_creator.R $gff $intron_GFF
 fi
+
+
+
 
 #The Intron GFF, created from the exon GFF using an R script written by Devon Ryan is to be used as a BED file.
 #The BED file has information about strand,gene ID and crucially intron number. Each entry should in theory be unique.
@@ -831,312 +848,6 @@ sh \$script
 echo "creating job scripts for DESeq testing"
 
 fi
-
-################################
-### STEP 6: INTRON RETENTION ###
-################################
-
-# The pipeline throws out a lot of intron retention information. Therefore I should test for this also using Li's method.
-# For each dataset, every sample is counted (with HTSeq) for each intron according to the GFF_intron file
-# DEXSeq is then ran comparing read counts from each intron against the other introns in that gene.
-# Last time I tried this I got a shitload of hits. So to filter those down I will then use BEDtools to check for exon-intron spanning reads. 
-# all of the files created can be put in $cohort/$dataset/intron_retention/ -> /counts  /dexseq_IR I can recycle the whole bloody thing.
-
-#for each dataset
-#	do
-#		for each sample
-#		write count scripts 
-#		HTSeq as before with intron GFF
-	
-if [[ "$intron_retainer" = "yes" ]];then
-GFF=$intron_GFF
-Step6_master_jobscript=${clusterFolder}/submission/Step6_count_${protein}_${species}.sh
-
-step6_num=`wc -l ${support} | awk '{print $1 -1}' `
-
-Step6_jobID=Step6_${protein}_${species}
-
-echo "
-#$ -S /bin/bash
-#$ -l h_vmem=3.6G
-#$ -l tmem=3.6G
-#$ -l h_rt=24:00:00
-#$ -pe smp 2
-#$ -R y
-#$ -o ${clusterFolder}/out
-#$ -e ${clusterFolder}/error
-#$ -N $Step6_jobID
-#$ -wd ${oFolder}
-#$ -t 1-${step6_num}
-#$ -tc 20
-
-if [[ \"\$SGE_TASK_ID\" == \"1\" ]];then
-        echo \"
-Step6 started at \`date +%H:%M:%S\`
-\" >> $report_file
-fi
-jobs=\"" > $Step6_master_jobscript
-
-# separate cohort into subcohorts using sample table
-## column 3 is 'dataset'. Each dataset should have its own count output
-awk 'NR >1{print $1,$2,$3,$4}' $support | while read sample bam dataset condition
-do
-#GFF is the same for all datasets of a given species
-
-info_table=${oFolder}/support/${protein}_${species}_info.tab
-if [ -e ${info_table} ];then
-#echo "dataset:  $dataset
-#info_table: $info_table"
-#echo "Info table found for cohort"
-paired=`awk -v dataset=$dataset '$1==dataset {print $2}' $info_table`
-stranded=`awk -v dataset=$dataset '$1==dataset {print $3}' $info_table`
-echo "reading off info from info_table"
-fi
-
-# One jobscript per bam file
-        countFolder=${results}/${dataset}/intron_retention/counts
-        Step6_sample_jobscript=${clusterFolder}/submission/intron_count_${dataset}_${sample}.sh
-
-        output=${countFolder}/${sample}_dexseq_counts.txt
-        if [ ! -e ${countFolder} ]; then mkdir -p ${countFolder};fi
-
-echo "
-#HTSeq implementation
-#introduces paired and stranded arguments.
-## 12/12/15 - hard-coding stranded=no as the counts were coming out near-empty. Try again with this.
-python $pycount --stranded no -p ${paired} -f bam -r pos $GFF $bam ${output}
-echo \"Step 6 finished for $sample at \`date +%H:%M:%S\` \" >> $report_file 
-" > $Step6_sample_jobscript
-echo $Step6_sample_jobscript >> $Step6_master_jobscript
-done
-
-echo "\"
-script=\`echo \$jobs | cut -f\$SGE_TASK_ID -d \" \"\`
-sh \$script
-" >> $Step6_master_jobscript
-echo "creating job scripts for intronic read counting"
-#if [ $submit = "yes" ]; then qsub $jobscript; fi
-fi
-
-#############################
-### STEP 7: INTRON DEXSeq ###
-#############################
-
-sanity_check=`awk 'NR == 1 {print $3}' $support `
-
-if [ $intron_DEXSeq = "yes" ] && [ $sanity_check = "dataset" ] ; then
-
-Step7_master_jobscript=${clusterFolder}/submission/Step7_DEXSeq_${protein}_${species}.sh
-dataset_num=`cat $support | awk 'NR > 1{print $3}' | uniq | wc -l`
-
-Step7_jobID=Step7_${protein}_${species}
-if [[ "$strict" == "yes" ]]; then Step7_jobID=Step7_${protein}_${species}_strict_${strict_num};fi
-
-sample_num=`awk 'NR >1' $support | wc -l`
-DEXSEQ_MEM=8
-DEXSEQ_CORES=4
-
-echo "sample number is: $sample_num "
-if [ $sample_num -gt 8 ]; then
-        DEXSEQ_CORES=12
-        DEXSEQ_MEM=3.5
-fi
-
-echo "
-#$ -S /bin/bash
-#$ -l h_vmem=${DEXSEQ_MEM}G
-#$ -l tmem=${DEXSEQ_MEM}G
-#$ -l h_rt=36:00:00
-#$ -pe smp ${DEXSEQ_CORES}
-#$ -R y
-#$ -o ${clusterFolder}/out
-#$ -e ${clusterFolder}/error
-#$ -N ${Step7_jobID}
-#$ -wd ${oFolder}
-#$ -l h_rt=24:00:00
-#$ -t 1-${dataset_num}
-#$ -tc 20
-
-if [[ \"\$SGE_TASK_ID\" == \"1\" ]];then
-        echo \"
-Step7 started at \`date +%H:%M:%S\`
-\" >> $report_file
-fi
-jobs=\"" > $Step7_master_jobscript
-
-# do this on a per-cohort basis
-for dataset in `cat $support | awk 'NR > 1{print $3}' | uniq `;do
-DEXSeqFolder=${results}/${dataset}/intron_retention/dexseq
-if [ ! -e $DEXSeqFolder ]; then mkdir $DEXSeqFolder; fi
-support_frame=${DEXSeqFolder}/${dataset}_dexseq_frame.tab
-jobscript=${clusterFolder}/submission/intron_DEXSeq_${dataset}.sh
-GFF=$intron_GFF
-keepSex=TRUE
-keepDups=FALSE
-cryptic=TRUE
-iFolder=${results}/${dataset}
-error_file=${clusterFolder}/R/dexseq_${dataset}.out
-
-## annotation_file is defined at the start
-
-# slice up cohort support file into subcohort supports
-awk -v dataset=$dataset 'NR ==1 {print $0} $3 == dataset {print $0}' $support > ${support_frame}
-bam_list=`cat $support_frame | awk 'BEGIN{ORS="\t"} NR>1 {print $2}' `
-sample_list=`cat $support_frame | awk 'BEGIN{ORS="\t"}NR>1{print $1}'`
-
-echo "
-#Intron retention - DEXSeq
-#Niko's new way of parsing shell arguments to R using optparse()
-${Rbin}script ${dexseqFinalProcessR} --cryptic ${cryptic} --gff ${GFF} --keep.sex ${keepSex} --keep.dups ${keepDups} --support.frame ${support_frame} --code ${dataset} --annotation.file ${annotation_file} --iFolder ${iFolder}  > ${error_file} 2>&1
-
-#append the R output to the report
-cat ${error_file} >> ${report_file}
-
-for i in ${DEXSeqFolder}/\*_\*/;do
-comparison=\`echo \$i | awk -F\"/\" '{print \$(NF-1)}'\`
-	if [ -e ${DEXSeqFolder}/\${comparison}/${dataset}_\${comparison}_CrypticExons.bed ]; then
-
-#Create a bed file of the exon-intron intervals for each significant intron. intron ID labels are appended with .1 (5' exon/intron boundary) or .2 (3' intron/exon boundary). The boundary is 10bp either side of the canonical exon-intron boundary.
-awk 'BEGIN{OFS=\"\\t\"}
-	{print \$1,\$2-20,\$2+20,\$4,\$5,\$6\".1\",\$7,\$8\"\n\"\$1,\$3-20,\$3+20,\$4,\$5,\$6\".2\",\$7,\$8}' ${DEXSeqFolder}/\${comparison}/${dataset}_\${comparison}_CrypticExons.bed > ${DEXSeqFolder}/\${comparison}/${dataset}_\${comparison}_intron_boundaries.bed 
-
-	bedtools multicov -bed ${DEXSeqFolder}/\${comparison}/${dataset}_\${comparison}_intron_boundaries.bed -bams $bam_list -split > ${DEXSeqFolder}/\${comparison}/${dataset}_intron_boundaries_analysis.bed -f 0.55 > ${DEXSeqFolder}/\${comparison}/${dataset}_\${comparison}_intron_boundaries_analysis.bed 
-
-	echo \"chr start end gene.id strand intron.id log2FC FDR $sample_list\" | tr \" \" \"\t\" > ${DEXSeqFolder}/\${comparison}/header	
-	cat ${DEXSeqFolder}/\${comparison}/header ${DEXSeqFolder}/\${comparison}/${dataset}_\${comparison}_intron_boundaries_analysis.bed > tmp 
-	mv tmp  ${DEXSeqFolder}/\${comparison}/${dataset}_\${comparison}_intron_boundaries_analysis.bed  
-
-	fi
-done
-
-
-" > $jobscript
-
-echo $jobscript >> $Step7_master_jobscript
-
-done
-
-echo "\"
-script=\`echo \$jobs | cut -f\$SGE_TASK_ID -d \" \"\`
-sh \$script
-" >> $Step7_master_jobscript
-echo "creating job scripts for intron retention DEXSeq testing"
-fi
-
-#DEXSeq each dataset
-#	write dexseq script
-#	Take the output of DEXSeq in BED form and create exon-intron boundary regions. Ive picked +-10 but I guess it could be more depending on reads. 
-#	cat output.bed | awk '{print $everrything_else $start-10,$start+10 "\n" $everything_else  $end-10, $end+10}' > output_boundaries.bed
-#	bedtools multicov -bed output_boundaries.bed -bams all_the_bams
-#	put the header on the file
-
-#	bedtools multicov 
-
-###############################
-### STEP 8: POST-PROCESSING ###
-###############################
-
-# Take the output of DEXSeq and DESeq and prepare some figures and other analyses
-
-#MEME Motif Analysis
-# For each dataset and pair of conditions, DEXSeq has outputted a list of cryptic exons that go up and down and are significant < 0.01.
-# Find each of these BED files and use BEDTools GetFasta to create a list of sequences.
-
-
-
-############################################
-### BONUS STEP: TAKING PICTURES WITH IGV ###
-############################################
-
-## for each dataset within a cohort, the output from DEXseq will be converted into a bed file by an R script
-# that bed file will be converted into an IGV batch script for viewing the candidates
-# snapshots will be taken and placed into a special folder
-if [[ "$IGV" == "yes" ]]; then
-
-for dataset in `cat $support | awk 'NR > 1{print $3}' | uniq `;do
-echo working on $dataset
-done
-fi
-
-
-	# IFS=$'\n'
-	# coordinate_list=${results}/${dataset}
-
-	# if [[ "$species" == "mouse" ]];then genome=mm10
-	# elif [[ "$species" == "human" ]];then genome=hg38;fi
-
-	# flank=1000
-	# FDR=0.01
-
-	# snapshotDir=${results}/${dataset}/IGV_snapshots
-	# if [ ! -e ${snapshotDir} ]; then 
-	# 	mkdir ${snapshotDir}
-	# fi
-	# 	mac_snapshotDir=/Users/Jack/project/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/${protein}_${species}/${dataset}/IGV_snapshots
-	# #some datasets have multiple conditions so use that too! For each condition within the dexseq file
-	# echo ${results}/${dataset}/dexseq 
-	# #BY CONDITION
-	# for condition in `ls ${results}/${dataset}/dexseq | grep _`;do 
-	# 	if [ -d ${results}/${dataset}/dexseq/$condition ];then
-	# #come up with a clever way of excluding directories that don't follow the CTL_HOM, CTL_TDP, CTL_HET rules
-	# 	hitlist=${results}/${dataset}/dexseq/${condition}/${dataset}_${condition}_SignificantExons.csv	
-	# 	if [ ! -e $hitlist ]; then
-	# 	echo $hitlist doesnt exist. Carry on!
-	#         continue
-	# 	fi
-		
-	# 	bedfile=${snapshotDir}/${dataset}_${condition}_${FDR}_hits.bed
-	# cat $hitlist | tr -d "\"" | awk -F',' -v t=$FDR 'BEGIN{OFS="\t"} $5 > 0 && $9 < t && $3 ~ /i/ {print $10,$11,$12,$1,$3,$9,$5}' > $bedfile 	
-	# #fi
-		
-	# IGVscriptStep1=${snapshotDir}/${dataset}_${condition}_${FDR}_IGV_step1.txt
-	# IGVscriptStep2=${snapshotDir}/${dataset}_${condition}_${FDR}_IGV_step2.txt
-	# #images are now written to the mac rather than the cluster
-	# mac_snapshotDir=/Users/Jack/Documents/Cryptic_Exons/IGV_snapshots/${protein}_${species}/${dataset}/${condition}
-	# #write the IGV batch script
-
-
-	# echo "# this is my IGV  script for $dataset $condition" > $IGVscriptStep1
-	# echo "# this is my IGV  script for $dataset $condition" > $IGVscriptStep2
-
-	# condition1=`echo $condition | awk -F'_' '{print $1}' `
-	# condition2=`echo $condition | awk -F'_' '{print $2}' ` 
-
-
-	# awk -v c1=${condition1} -v c2=${condition2} -v d=${dataset} 'NR>1 && $3 == d && ($4 == c1 || $4 == c2) {print "load " $2}' $support | sed 's/\/cluster\/scratch3\/vyp-scratch2/\/Users\/Jack\/scratch/g' >> $IGVscriptStep1
-
-	# mac_results=`echo ${results} | sed 's/\/cluster\/project8\/vyp/\/Users\/Jack\/project\//g' `
-
-	# echo "load ${mac_results}/GFF/${protein}_${species}.cryptics.merged.bed" >> $IGVscriptStep1
-
-	# if [[ "$species" == "mouse" ]]; then
-	# 	echo "load /Users/Jack/Documents/Cryptic_Exons/IGV_snapshots/mm10_GENCODE_comp_VM7.gtf.gz" >> $IGVscriptStep1
-	# elif [[ "$species" == "human" ]]; then
-	# 	echo "load /Users/Jack/Documents/Cryptic_Exons/IGV_snapshots/hg38_GENCODE_comp_VM7.gtf.gz" >> $IGVscriptStep1
-	# fi 
-
-	# echo "
-	# snapshotDirectory ${mac_snapshotDir}
-	# genome $genome
-	# " >> $IGVscriptStep2
-
-	# #Some datasets have 1000s of hits. Just take the top 100 to investigate
-	# for coord in `head -100 $bedfile`;do
-	# 	geneID=`echo $coord | awk '{print $4"_"$5}' `
-	# 	coord=`echo $coord | awk -v flank=$flank '{print $1, $2-flank, $3+flank}'`
-
-	# echo "goto $coord
-	# collapse
-	# snapshot ${geneID}.png" >> $IGVscriptStep2
-	# done
-
-	# #for testing, remove for real
-	# #exit
-
-	# fi
-	# done
-	# done
-	# fi
 
 ##############################
 ### FINAL STEP: SUBMISSION ###
