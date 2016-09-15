@@ -6,8 +6,8 @@ library(data.table)
 library(ggplot2)
 library(dplyr)
 
-mouse.ling <- c("2610507B11Rik",    "A230046K03Rik",     "Adipor2",      "Adnp2",        "Ahnak",        "Atraid",       "Cluh", "Edem2",        "Ercc6",        "Fam21",        "Fam73a",       "Flnb", "Ggct", "Gsta4",        "Gtf2e2",       "Hace1",        "Hgsnat",       "Ift81",        "Lnp",  "Mettl6",       "Mib1", "Mier1",        "Necap1",       "Nme6", "Pir",  "Pno1", "Ppp6c",        "Ptcd2",        "Pycr2",        "Sars", "Smg5", "Smg5", "Snapc3",       "Spata13",      "Spata7",       "Spcs2",        "Sptbn4",       "Sulf1",        "Synj2bp",      "Tecpr1",       "Tnfaip1",      "Tnks2",        "Tnnt1",        "Trim8",        "Uggt2",        "Usp15",        "Usp15",        "Wbscr22",      "Zfp13",        "Zfp809")
-human.ling <- c("EPB41L4A",    "CEP72",  "INSR", "FAM114A2",     "PFKP", "ST5",  "RNFT2",        "RNFT2",        "ALX1", "AGRN", "AGRN", "ATG4B",        "AGRN", "AGRN", "ST5",  "SETD5",        "KDELC2",       "MUC16",        "PKN1", "IRF9", "UPF2", "GPSM2",        "XPO4", "RASA4",        "RASA4B",       "PARP6",        "KRT7", "TRAPPC12",     "RANBP1",       "HERC6",        "BLZF1",        "ZFP91",        "HDGFRP2",      "MAP3K8",       "SSFA2",        "CENPK",        "ITPR3",        "KYNU", "IRF9", "COL4A6",       "KYNU") 
+#mouse.ling <- c("2610507B11Rik",    "A230046K03Rik",     "Adipor2",      "Adnp2",        "Ahnak",        "Atraid",       "Cluh", "Edem2",        "Ercc6",        "Fam21",        "Fam73a",       "Flnb", "Ggct", "Gsta4",        "Gtf2e2",       "Hace1",        "Hgsnat",       "Ift81",        "Lnp",  "Mettl6",       "Mib1", "Mier1",        "Necap1",       "Nme6", "Pir",  "Pno1", "Ppp6c",        "Ptcd2",        "Pycr2",        "Sars", "Smg5", "Smg5", "Snapc3",       "Spata13",      "Spata7",       "Spcs2",        "Sptbn4",       "Sulf1",        "Synj2bp",      "Tecpr1",       "Tnfaip1",      "Tnks2",        "Tnnt1",        "Trim8",        "Uggt2",        "Usp15",        "Usp15",        "Wbscr22",      "Zfp13",        "Zfp809")
+#human.ling <- c("EPB41L4A",    "CEP72",  "INSR", "FAM114A2",     "PFKP", "ST5",  "RNFT2",        "RNFT2",        "ALX1", "AGRN", "AGRN", "ATG4B",        "AGRN", "AGRN", "ST5",  "SETD5",        "KDELC2",       "MUC16",        "PKN1", "IRF9", "UPF2", "GPSM2",        "XPO4", "RASA4",        "RASA4B",       "PARP6",        "KRT7", "TRAPPC12",     "RANBP1",       "HERC6",        "BLZF1",        "ZFP91",        "HDGFRP2",      "MAP3K8",       "SSFA2",        "CENPK",        "ITPR3",        "KYNU", "IRF9", "COL4A6",       "KYNU") 
 
 options(echo=T)
 #setwd("/Users/Jack/project/")
@@ -29,10 +29,18 @@ deseq.res <- c("Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junc
 				"Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/TDP_ENCODE_human/dataset_1/expression/deseq2/control_TDP/deseq_dataset_1_differential_expression.tab",
 				"Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/TDP_ENCODE_human/dataset_2/expression/deseq2/control_TDP/deseq_dataset_2_differential_expression.tab")
  
-outFolder <- "Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/Figures/" 
+outFolder <- "Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/Figures/Union_Datasets/"
+
+# create a cryptic_exon_gene_expression folder for both species
+for(i in 1:length(unique(species.code))){
+	expression.folder <- paste0(outFolder,unique(species.code)[i],"/cryptic_gene_expression")
+	if(!file.exists(expression.folder)){
+	dir.create(expression.folder)}
+}
+
 
 dataset.code <- c("cleveland","chiang","mRNA","total")
-
+species.code <- c("mouse","mouse","human","human")
 # I think this is only still required to generate named lists of cryptic exons 
 #deseq.res.list <- list()
 for(i in 1:length(dataset.names)){
@@ -83,8 +91,8 @@ for( i in 1:4){
 		ling <- human.ling }
 	# read in differential expression data and subset just the significant changes
 	deseq <- as.data.frame(fread(deseq.res[i]))
-        deseq$dataset <- dataset.names[i]
-        deseq.sig <- deseq[deseq$padj < 0.1,]
+    deseq$dataset <- dataset.names[i]
+    deseq.sig <- deseq[deseq$padj < 0.1,]
 	# read in the cryptic exon analysis
 	specific <- as.data.frame(fread(splicing.analysis.res[i]))
 	specific.cryptic.ids <- specific[specific$class == "SJ.SUPPORTED.UP",]$EnsemblID
@@ -101,10 +109,14 @@ for( i in 1:4){
 	other.deseq <- filter(deseq.sig, grepl( paste(other.cryptic.ids, collapse = "|" ), EnsemblID) )
 	other.deseq$group <- "other cryptic exon genes"
 	
+	# write out the gene expression for the specific and other cryptic exon genes for each dataset.
+	genes.out.table <- rbind(other.deseq, specific.deseq)
+	genes.out <- paste0(outFolder, species.code[i],"/cryptic_gene_expression/",dataset.code[i],"_cryptic_gene_expression.tab")
+	write.table(genes.out.table, genes.out, quote=F, sep="\t", row.names=F)
 	# use all remaining genes as a control. BUT keep only those that have a meanbase above the lowest meanbase of all the cryptic exon genes.
  
 	all.genes <- deseq.sig
-	all.genes <- filter(all.genes, meanBase >= min.cryptic.meanBase)
+	all.genes <- filter(all.genes, baseMean >= min.cryptic.baseMean)
 	all.genes$group <- "all genes"
  
 	together <- rbind(all.genes,specific.deseq, other.deseq)
@@ -469,3 +481,4 @@ opposite.graph.out <- "Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/spli
 opposite.table.out <- "Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/Figures/Figure_2_differential_expression_enrichment_min_baseMean_opposite.tab"
 write.table(format(opposite.datasets, digits = 2),opposite.table.out, sep ="\t", row.names = F, quote=F)
 ggsave(opposite.graph.out, plot = p.opposite.datasets)
+

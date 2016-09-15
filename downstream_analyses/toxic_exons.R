@@ -45,11 +45,11 @@ dexseq.res <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNA
 method <- "cryptic_exons"
 
 # Both Mouse TDP43 for paper
-# code <- "both_mouse"
-# species <- "mouse"
-# outFolder <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/Figures/Union_Datasets/mouse/"
-# dexseq.res <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/Figures/Union_Datasets/mouse/both_datasets_unison_splicing_analysis.tab"
-# method <- "cryptic_exons"
+code <- "both_mouse"
+species <- "mouse"
+outFolder <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/Figures/Union_Datasets/mouse/"
+dexseq.res <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/Figures/Union_Datasets/mouse/both_datasets_unison_splicing_analysis.tab"
+method <- "cryptic_exons"
 
 # This script should use either the splice junction supported cryptic exons or the annotated exons as the input. 
 # It then should determine the canonical intron that the exon sits within and then attributes upstream and downstream exon coordinates.
@@ -316,16 +316,9 @@ if(method == "cryptic_exons"){
 	# create a reference table
 	reference <- d
 	# clean any missing or upstream or downstream values
-	#d <- d[!is.na(d$upstream.start),]
-	#d <- d[!is.na(d$downstream.end),]
 	d <- filter(d, upstream.exon.class == "CDS" & downstream.exon.class == "CDS")
 }
 
-
-
-#code <- paste0(code,"_",method)
-# create 3 bed files:
-	# upstream exon
 # this is for the cryptic exons that have splice junctions on either side. 
 # regulated (annotated or cryptic) exon
 
@@ -416,33 +409,7 @@ d.fasta <- d.fasta[d.fasta$seq.spliced.out != "",]
 
 
 # Splice together the upstream and downstream sequence and translate. Which reading frame gives a continous sequence free of stop codons?
-# i <- 12
-# seq.out <- DNAString(d.fasta[i,]$seq.spliced.out)
-# codon.phase <- as.numeric(d.fasta[i,]$upstream.codon.phase)
-# if(d.fasta[i,]$fix.strand == "-"){
-# 	seq.out <- reverseComplement(seq.out)
-# 	codon.phase <- as.numeric(d.fasta[i,]$downstream.codon.phase)
-# }
-# # Get the three different reading frames
-# out.orf <- lapply(1:3, function(pos) subseq(seq.out, start=pos))
-# out.orf <- lapply(out.orf, translate)
-# # One of the three reading frames is correct. One should have either no stop codons or one at the start so ignore the first letter when counting.
-# readframe <- lapply(out.orf, function(x) countPattern("*",x))
 
-# correct.frame <- ifelse(test = is.na(codon.phase),
-# 	yes = c(1,2,3)[readframe < 1],
-# 	no = codon.phase + 1 )
-
-# out.correct <- out.orf[correct.frame]
-# spliced.out.final <- as.character(out.correct[[1]])
-
-# seq.in <- DNAString(d.fasta[i,]$seq.spliced.in)
-# if(d.fasta[i,]$fix.strand == "-") seq.in <- reverseComplement(seq.in)
-# seq.in.orf <- translate(subseq(seq.in,start = correct.frame))
-# spliced.in.final <- as.character(seq.in.orf)
-# verdict <- ifelse(test = grepl("*", spliced.in.final,fixed=T),
-# 	yes = "toxic",
-# 	no = "non-toxic")
 
 
 
@@ -455,15 +422,11 @@ toxic.seq <- apply(d.fasta, MAR=1, FUN = function(x) translate_toxic(x[64],x[65]
 toxic.df <- data.frame(correct.frame = toxic.seq[1,], spliced.out = toxic.seq[2,], spliced.in = toxic.seq[3,], verdict.stop.codon = toxic.seq[4,], verdict.frameshift = toxic.seq[5,]) 
 }
 
-# if(method == "annotated_exons"){
-# 	toxic.seq <- apply(d.fasta, MAR=1, FUN = function(x) translate_toxic(x[28],x[29],x[20],x[23],x[24]) )
-# 	toxic.seq <- unlist(toxic.seq)
-# 	toxic.df <- data.frame(spliced.out = toxic.seq[1,], spliced.in = toxic.seq[2,], verdict = toxic.seq[3,]) 
-# }
 
 d.toxic <- cbind(d.fasta,toxic.df)
 
-d.toxic.out <- paste0(paste0(toxic.outFolder,"/",code,"_protein_prediction.csv"), sep = ",", quote = F, row.names = F)
+d.toxic.out <- paste0(toxic.outFolder,"/",code,"_protein_prediction.tab")
+write.table(d.toxic, d.toxic.out, row.names=F, quote=F,sep='\t')
 # is there a frame shift or not?
 # determine length of downstream exon and determine whether the spliced in peptide contains the downstream exon's peptide sequence
 # if so then there's no frameshift.
