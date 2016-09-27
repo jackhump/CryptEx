@@ -1,0 +1,89 @@
+# iCLIP preparer
+# a script that lifts over the bed coordinates of a list of iCLIP peaks and then adds a strand column
+#set -x 
+liftOver=/cluster/project8/vyp/vincent/Software/liftover/liftOver
+hg19_hg38_block=/cluster/project8/vyp/vincent/Software/liftover/hg19ToHg38.over.chain.gz
+mm9_mm10_block=/cluster/project8/vyp/vincent/Software/liftover/mm9ToMm10.over.chain.gz
+
+bed=$1
+
+# check what genome the iCLIP peaks were aligned to
+if [ `echo $bed | grep -ci mm9` -gt 0 ];then
+	genome=mm9
+elif [ `echo $bed | grep -ci hg19` -gt 0 ];then
+	genome=hg19
+elif [ `echo $bed | grep -ci mm10` -gt 0 ];then
+	genome=mm10
+elif [ `echo $bed | grep -ci hg38` -gt 0 ];then
+        genome=hg38
+else
+	echo "
+iCLIP preparer
+==============
+only works on hg19 and mm9
+	"
+	exit
+fi
+
+if [ `echo $bed | grep -ci stranded` -gt 0 ];then
+	echo "
+iCLIP preparer
+==============
+
+this is already stranded!
+"
+	exit
+fi
+
+echo "genome is: " $genome
+
+# unzip the bed and comment out the first line - it confuses liftOver
+# make sure that the columns are space delimited for liftOver
+if [ `echo $bed | grep -c .gz` -gt 0 ]; then
+	unzipped_bed=` echo $bed | sed 's/\.bed\.gz$/\.bed/g' `
+	zcat $bed |
+	awk 'NR == 1 {print "#" $0} NR > 1 {print}' | 
+	tr "\t" " " > $unzipped_bed
+else
+	unzipped_bed=` echo $bed | awk -F'.gz' '{print $1}' `
+	awk 'NR == 1 {print "#" $0} NR > 1 {print}' $unzipped_bed | 
+	tr "\t" " " $bed > $unzipped_bed
+fi
+
+
+#liftOver from old assembly to new assembly
+if [[ "$genome" == "mm9" ]];then
+	newbed=`echo $unzipped_bed | sed 's/mm9/mm10/g'`
+	if [ ! -e $newbed ];then
+		$liftOver $unzipped_bed $mm9_mm10_block $newbed ${unzipped_bed}.unmapped
+	else
+		echo "$newbed exists."
+	fi
+elif [[ "$genome" == "hg19" ]];then
+	newbed=`echo $unzipped_bed | sed 's/hg19/hg38/g'`
+        if [ ! -e $newbed ];then
+                $liftOver $unzipped_bed $hg19_hg38_block $newbed ${unzipped_bed}.unmapped
+        else
+                echo $newbed exists.
+        fi
+else 
+	newbed=$bed
+fi
+# add strand column to bed file. Needed for bedTools analyses. 
+# 	if score is positive then so is strand. 
+#	Strand must be the sixth column. Add bogus fifth colum of "."
+# 	Either "+" or "-" 
+stranded_bed=`echo $newbed | sed 's/\.bed$/_stranded\.bed.gz/g'`
+
+awk 'BEGIN {OFS="\t"} 
+	$4 < 0 {print $0,".","-"} 
+	$4 > 0 {print $0,".","+"}
+' $newbed |
+tr " " "\t" |
+gzip > $stranded_bed 
+
+for file in $unzipped_bed $newbed ${unzipped_bed}.unmapped;do
+	if [ -e $file ];then
+		rm $file
+	fi
+done
