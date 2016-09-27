@@ -42,14 +42,13 @@ DEXSeq=no
 DESeq=no
 cohort_merger=no
 
-## STRICT MODE: however I feel I can improve my cryptic exon discovery.
-# Current strategy: merge all intronic splice features that are within 250bp of each other
-##for the strict setting, how many splice junctions should an interval contain if I am to believe it? 100 is probably too strict. Is 10 too lax?
+
+# Current strategy: merge all intronic splice features that are within 500bp of each other
 strict_num=500
 
 
 # Each step in the pipeline can be run independently of every other step but for efficiency purposes I'd like to be able to run each step in series automatically. 
-# Each step's job script needs a unique ID and variable name
+# Each step's job script has unique ID and variable name
 
 #case statement to match the argument variables coming in from the submission script
 until [ -z $1 ];do
@@ -136,30 +135,29 @@ for folder in ${oFolder} ${results} ${reference} ${clusterFolder} ${clusterFolde
     if [ ! -e $folder ]; then mkdir $folder; fi
 done
 
-if [[ "$gff" == "hardcoded" ]]; then
-	if [[ "$species" == "mouse" ]];then
-	gff_base=/cluster/scratch3/vyp-scratch2/reference_datasets/RNASeq/Mouse/Mus_musculus.GRCm38.82_fixed
-	elif [[ "$species" == "human" ]];then
-	gff_base= /cluster/scratch3/vyp-scratch2/reference_datasets/RNASeq/Human_hg38/Homo_sapiens.GRCh38.82_fixed
-	fi
-fi
+# Users provide their own GFF file and their own GFF introns file. 
+	# The CryptEx wiki will provide a link to Devon Ryan's intron script to create the GFF introns file.
 
-if [[ "$annotation_file" == "hardcoded" ]];then
+#if [[ "$gff" == "hardcoded" ]]; then
+	if [[ "$species" == "mouse" ]];then
+	gff_base="/cluster/scratch3/vyp-scratch2/reference_datasets/RNASeq/Mouse/Mus_musculus.GRCm38.82_fixed"
+	elif [[ "$species" == "human" ]];then
+	gff_base="/cluster/scratch3/vyp-scratch2/reference_datasets/RNASeq/Human_hg38/Homo_sapiens.GRCh38.82_fixed"
+	fi
+#fi
+
+#if [[ "$annotation_file" == "hardcoded" ]];then
 	if [[ "$species" == "mouse" ]];then
 	annotation_file=/cluster/project8/vyp/vincent/Software/RNASeq_pipeline/bundle/mouse/biomart/biomart_annotations_mouse.tab
 	elif [[ "$species" == "human" ]];then
 	 annotation_file=/cluster/project8/vyp/vincent/Software/RNASeq_pipeline/bundle/human_hg38/biomart/biomart_annotations_human.tab
-fi
+	fi
+#fi
 
 intron_GFF=${gff_base}_introns_only.gff
 exon_GFF=${gff_base}_exons_only.gff
 
 # create intron_GFF and exon_GFF from the supplied GFF file. 
-
-if [ ! -e $intron_GFF ]; then
-	echo "creating intron GFF"
-	Rscript intron_GFF_creator.R $gff $intron_GFF
-fi
 
 
 
@@ -184,7 +182,7 @@ report_file=${results}/report.txt
 if [[ "$strict" == "yes" ]]; then
 	report_file=${results}/report_strict${strict_num}.txt
 fi
-echo "Jack's Extended Cryptic Hunting pipeline:
+echo "CryptEx
 Started at:	`date`
 --Protein:	$protein
 --Species:	$species

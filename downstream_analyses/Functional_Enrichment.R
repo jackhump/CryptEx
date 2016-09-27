@@ -87,7 +87,6 @@ species <- "human"
 outFolder <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/TDP_ENCODE_human/concordant"
 d1.res <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/TDP_ENCODE_human/dataset_1/splice_junction_analysis/dataset_1_control_TDP_splicing_analysis.tab"
 d2.res <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/TDP_ENCODE_human/dataset_2/splice_junction_analysis/dataset_2_control_TDP_splicing_analysis.tab"
-
 case.SJs <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting//TDP_ENCODE_human/dataset_2/splice_junction_analysis/dataset_2_SJs_case.tab"
 
 #######################
@@ -150,8 +149,8 @@ dataset.names <- c("mRNA","total")
 splicing_analysis.res <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/Figures/Figure_2/human/both_datasets_unison_splicing_analysis.tab"
 
 if(! file.exists(case.SJs)){
-	cmd <- paste0("cat ", case.SJs.list[1],"  > ", both.case.SJs,
-		'; grep -v "^chr" ', case.SJs.list[2], ' >> ', both.case.SJs )
+	cmd <- paste0("cat ", case.SJs.list[1],"  > ", case.SJs,
+		'; grep -v "^chr" ', case.SJs.list[2], ' >> ', case.SJs )
 	system( cmd )
 }
 if(!file.exists(splicing_analysis.res)){	

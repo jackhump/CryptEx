@@ -23,6 +23,7 @@ for species in human mouse;do
 		echo snapshotDirectory ${outFolder}/${species} > $batchFile
 
 		awk -v species_id=${species}_${dataset} '{
+			gsub(/\./,"-",$4); 
 			print "goto "$1" "$2" "$3;
 			print "snapshot  " NR"_"$4"_"$5"_"species_id".png";
 			print "" }' $BEDtable >> $batchFile
@@ -30,6 +31,8 @@ for species in human mouse;do
 
 done
 
+# in case there are any stray "." in the gene names:
+for i in `ls *_*.*.png`; do new=`echo $i | sed 's/\./-/' `; mv $i $new; done
 
 # run this after you've taken all the screenshots with IGV. 
 
@@ -40,7 +43,7 @@ for species in human mouse; do
 		# crop top
 		convert -crop +0+130 ${outFolder}/${species}/${picture} ${outFolder}/${species}/cropped/crop_${picture}
 		# crop bottom
-		convert -crop +0-410 ${outFolder}/${species}/cropped/crop_${picture} ${outFolder}/${species}/cropped/${picture} 
+		convert -crop +0-250 ${outFolder}/${species}/cropped/crop_${picture} ${outFolder}/${species}/cropped/${picture} 
 		# remove intermediate file
 		rm ${outFolder}/${species}/cropped/crop_${picture} 
 	done
@@ -51,15 +54,16 @@ done
 
 for species in human mouse; do
 	if [[ "$species" == "human" ]];then
-		end_Num=95
-		data=(total mRNA)
+		endNum=95
+		data=(mRNA total)
+		data_long=("Human K562 mRNA" "Human K562 total RNA")
 	elif [[ "$species" == "mouse" ]];then
 		endNum=52
 		data=(AB ES)
-		data_long=("Mouse Adult Brain" "Mouse Embryonic Stem Cell")
+		data_long=("Mouse Adult Brain" "Mouse Embryonic Stem Cells")
 	fi
 	TeX=${outFolder}/${species}_all_images.tex
-
+	Species=`echo $species | awk '{print toupper(substr($1,1,1)) substr($1,2,length($1) )  }' `
 	echo "
 \documentclass{article}
 
@@ -68,18 +72,19 @@ for species in human mouse; do
 \usepackage{caption}
 \usepackage{fullpage}
 
-\title{Mouse Cryptic Exons \\ from \\ \textit{Quantitative analysis of cryptic splicing associated with TDP-43 depletion}}
+\title{${Species} Cryptic Exons \\ from \\ \textit{Quantitative analysis of cryptic splicing associated with TDP-43 depletion}}
 \author{Jack Humphrey, Warren Emmett, Pietro Fratta, Adrian M. Isaacs \& Vincent Plagnol}
 \begin{document}
+
 \maketitle
 \newpage
 
 " > $TeX
-	endNum=2
+
 	for i in `seq 1 $endNum`; do
 		pic_one=`ls ${outFolder}/${species}/cropped/${i}_*_${data[0]}*png`
 		pic_two=`ls ${outFolder}/${species}/cropped/${i}_*_${data[1]}*png`
-		gene_name=`echo $pic_one | awk -F'/' '{split($NF,a,"_");print a[2]}' `
+		gene_name=`echo $pic_one | awk -F'/' '{split($NF,a,"_");print a[2]" "a[3]}' | sed 's/\./-/' `
 
 		echo "
 \centering
@@ -101,5 +106,5 @@ for species in human mouse; do
 	 echo "
 \end{document}
 " >> $TeX
-pdflatex $TeX
+pdflatex $TeX; fancyOpen `echo $TeX | awk -F'.' '{print $1".pdf"}' `
 done

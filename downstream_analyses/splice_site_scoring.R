@@ -433,7 +433,7 @@ for(i in 1:1000){
 }
 # create table and write it out
 ninemers.random.table <- data.frame(seq = ninemers.random)
-ninemers.random.out <- paste0(paste0(SJ.scoring.outFolder,"random.ninemers.fasta"))
+ninemers.random.out <- paste0(SJ.scoring.outFolder,"random.ninemers.fasta")
 write.table(ninemers.random.table, ninemers.random.out, col.names=F,row.names=F,quote=F,sep="\t")
 # run maxEnt 5' splice site analysis
 setwd("/SAN/biomed/biomed5/biomed5/GEUV_exon_annotaiton/exon_annotation/")
@@ -465,6 +465,14 @@ random.sequence.slim <- data.frame(exon.type = "random sequence",
 	gene.id = "random",
                 five_prime_splice_score = ninemers.random.table$five_prime_splice_score,
                 three_prime_splice_score = twentythreemers.random.table$three_prime_splice_score)
+
+#### OUTPUT FOR SUMMARY TABLE
+cryptic.exons.out <- cryptic.exons.slim
+cryptic.exons.out$gene.name <- str_split_fixed(cryptic.exons.out$gene.id, "_",2)[,1] 
+cryptic.exons.out$exonID <- str_split_fixed(cryptic.exons.out$gene.id, "_",2)[,2] 
+
+cryptic.exons.out.table <- paste0(SJ.scoring.outFolder,"/",code,"_SJ_scores.tab")
+write.table(cryptic.exons.out, cryptic.exons.out.table, sep="\t", quote=F, row.names=F)
 
 ### GRAPHING
 

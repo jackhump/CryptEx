@@ -5,35 +5,35 @@ library(dplyr)
 # create bed files of the cryptic exons and annotated exons.
 # use these bed files to find the mean PhyloP conservation score for all the nucledotides within each exon.
 
-##################
-## CLEVELAND TDP43
-##################
-species <- "mouse"
-code <- "Cleveland_TDP43"
-outFolder <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/paper_TDP_mouse/Cleveland_TDP43"
-splicing_analysis.res <- paste0(outFolder,"/splice_junction_analysis/Cleveland_TDP43_CTL_TDP_splicing_analysis.tab")
-dexseq.res <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/paper_TDP_mouse/Cleveland_TDP43/strict_500/dexseq/CTL_TDP/Cleveland_TDP43_CTL_TDP_SignificantExons.csv"
+# ##################
+# ## CLEVELAND TDP43
+# ##################
+# species <- "mouse"
+# code <- "Cleveland_TDP43"
+# outFolder <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/paper_TDP_mouse/Cleveland_TDP43"
+# splicing_analysis.res <- paste0(outFolder,"/splice_junction_analysis/Cleveland_TDP43_CTL_TDP_splicing_analysis.tab")
+# dexseq.res <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/paper_TDP_mouse/Cleveland_TDP43/strict_500/dexseq/CTL_TDP/Cleveland_TDP43_CTL_TDP_SignificantExons.csv"
 
-###################
-## ENCODE DATASET1 
-###################
-code <- "dataset_1"
-species <- "human"
-outFolder <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/TDP_ENCODE_human/dataset_1"
-splicing_analysis.res <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/TDP_ENCODE_human/dataset_1/splice_junction_analysis/dataset_1_control_TDP_splicing_analysis.tab"
-case.SJs <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting//TDP_ENCODE_human/dataset_1/splice_junction_analysis/dataset_1_SJs_case.tab"
-dexseq.res <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/TDP_ENCODE_human/dataset_1/strict_500/dexseq/control_TDP/dataset_1_control_TDP_SignificantExons.csv" 
+# ###################
+# ## ENCODE DATASET1 
+# ###################
+# code <- "dataset_1"
+# species <- "human"
+# outFolder <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/TDP_ENCODE_human/dataset_1"
+# splicing_analysis.res <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/TDP_ENCODE_human/dataset_1/splice_junction_analysis/dataset_1_control_TDP_splicing_analysis.tab"
+# case.SJs <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting//TDP_ENCODE_human/dataset_1/splice_junction_analysis/dataset_1_SJs_case.tab"
+# dexseq.res <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/TDP_ENCODE_human/dataset_1/strict_500/dexseq/control_TDP/dataset_1_control_TDP_SignificantExons.csv" 
 
 
-###################
-## ENCODE DATASET 2 
-###################
-code <- "dataset_2"
-species <- "human"
-outFolder <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/TDP_ENCODE_human/dataset_2"
-splicing_analysis.res <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/TDP_ENCODE_human/dataset_2/splice_junction_analysis/dataset_2_control_TDP_splicing_analysis.tab"
-case.SJs <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting//TDP_ENCODE_human/dataset_2/splice_junction_analysis/dataset_2_SJs_case.tab"
-dexseq.res <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/TDP_ENCODE_human/dataset_2/strict_500/dexseq/control_TDP/dataset_2_control_TDP_SignificantExons.csv" 
+# ###################
+# ## ENCODE DATASET 2 
+# ###################
+# code <- "dataset_2"
+# species <- "human"
+# outFolder <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/TDP_ENCODE_human/dataset_2"
+# splicing_analysis.res <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/TDP_ENCODE_human/dataset_2/splice_junction_analysis/dataset_2_control_TDP_splicing_analysis.tab"
+# case.SJs <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting//TDP_ENCODE_human/dataset_2/splice_junction_analysis/dataset_2_SJs_case.tab"
+# dexseq.res <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/TDP_ENCODE_human/dataset_2/strict_500/dexseq/control_TDP/dataset_2_control_TDP_SignificantExons.csv" 
 
 # Both Human TDP43 ENCODE for paper
 code <- "both_ENCODE"
@@ -49,8 +49,6 @@ outFolder <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNAS
 dexseq.res <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/Figures/Union_Datasets/mouse/both_datasets_unison_splicing_analysis.tab"
 
 
-
-
 conservation.outFolder <- paste0(outFolder,"/conservation/")
 if (! file.exists(conservation.outFolder)) dir.create(conservation.outFolder)
 
@@ -58,7 +56,6 @@ if(species == "mouse"){
 	phyloP.bw <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/reference/phyloP/mm10.60way.phyloP60way.bw"
 }
 if(species == "human"){
-	## FIND THIS
 	phyloP.bw <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/reference/phyloP/hg38.phyloP100way.bw"
 }
 
@@ -116,7 +113,6 @@ bed.files.list <- paste0(outFolder,"/Feature_Enrichment/",bed.names,".exons.bed"
 #bed.files <- list(cryptic.exons.bed, control.exons.bed,annotated.sig.bed,annotated.nonsig.bed)
 #bed.files.list <- c(annotated.nonsig.bed.out, bed.files.list)
 
-
 # PhyloP conservation!
 exon.conservation <- list()
 for(i in 1:length(bed.names)){
@@ -137,8 +133,18 @@ for(i in 1:length(bed.names)){
 	exon.conservation[[i]] <- conservation
 }
 
-exon.conservation.merge <- as.data.frame(do.call(args = exon.conservation, what = rbind))
+# read in the cryptic exon list
+cryptic.exons.flank.bed <- as.data.frame(fread(paste0(outFolder,"/Feature_Enrichment/",bed.names[1],".exons.bed")))
+names(cryptic.exons.flank.bed) <- c("chr","start","end","gene.name","exonID","strand","iteration")
 
+# write out table of conservation scores for each exon
+cryptic_exons.conservation$gene.name <- cryptic.exons.flank.bed$gene.name[match(rownames(cryptic_exons.conservation), rownames(cryptic.exons.flank.bed))]
+cryptic_exons.conservation$exonID <- cryptic.exons.flank.bed$exonID[match(rownames(cryptic_exons.conservation), rownames(cryptic.exons.flank.bed))]
+cryptic.conservation.table <- paste0(outFolder,"/conservation/",code,"_cryptic_exon_conservation.tab")
+write.table(cryptic_exons.conservation, cryptic.conservation.table, sep="\t",row.names=F,quote=F)
+
+# prepare tables for graphing
+exon.conservation.merge <- as.data.frame(do.call(args = exon.conservation, what = rbind))
 conservation.graph <- paste0(outFolder, "/conservation/",code,"_exon_conservation_plot.pdf")
 
 if(grepl("Cleveland_TDP43", code)){

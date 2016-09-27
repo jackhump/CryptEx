@@ -1,6 +1,22 @@
+#!/usr/bin/env Rscript
 
-library(DESeq2)
+#FOR DEBUGGING
+gff <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting//TDP-43_patient_human/Prudencio/GFF/TDP-43_patient_human_Prudencio.strict.500.total.cryptics.gff"
+keep.sex <- TRUE 
+keep.dups <- FALSE 
+support.frame <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/support/Prudencio_ALS_brain_support.tab"
+code <- "Prudencio" 
+annotation.file <- "/cluster/project8/vyp/vincent/Software/RNASeq_pipeline/bundle/human_hg38/biomart/biomart_annotations_human.tab" 
+iFolder <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting//TDP-43_patient_human/Prudencio/strict_500"
+cryptic <- TRUE
+
+
+options(echo=T) 
+
+library(DEXSeq)
+library(BiocParallel)
 library(optparse)
+
 
 option_list <- list(
     make_option(c('--support.frame'), help=''),
@@ -9,208 +25,284 @@ option_list <- list(
     make_option(c('--iFolder'), help=''),
     make_option(c('--annotation.file'), help=''),
     make_option(c('--keep.dups'), help='', default=FALSE),
-    make_option(c('--keep.sex'), help='', default=FALSE) 
+    make_option(c('--keep.sex'), help='', default=FALSE),
+    make_option(c('--cryptic'), help='', default=FALSE) 
 )
 
-### Just for debugging 
-#support.frame <- "/cluster/project8/vyp/Tabrizi_Huntington_RNASeq/support/htt_support2.txt"
-#code <- "htt"
-#keep.dups <- FALSE 
-#annotation.file <- "/cluster/project8/vyp/vincent/Software/RNASeq_pipeline/bundle/human/biomart/biomart_annotations_human.tab"
-#iFolder <- "/scratch2/vyp-scratch2/Tabrizi_Huntington_RNASeq/processed/Nov2014/"
-
-## vincent debugging
-#support.frame <- "data/TDP43_m323k.tab"
-#code <- "m323k"
-#annotation.file <- "/cluster/project8/vyp/vincent/Software/RNASeq_pipeline/bundle/mouse/biomart/biomart_annotations_mouse.tab"
-#iFolder <- "/scratch2/vyp-scratch2/IoN_RNASeq/Fratta_RNASeq/brain/m323k"
-#keep.dups <- FALSE
-#keep.sex <- FALSE
-
+########################## read arguments
 option.parser <- OptionParser(option_list=option_list)
 opt <- parse_args(option.parser)
 
+
+#annotation.file <- '/cluster/project8/vyp/vincent/Software/RNASeq_pipeline/bundle/Tc1_mouse/tc1_annotations.tab'
+#iFolder <- '/scratch2/vyp-scratch2/IoN_RNASeq/Frances/processed'
+#support.frame <- 'data/RNASeq_AD_Tc1J20.tab'
+#code <- 'Zanda_AD_Tc1J20'
+#gff <- '/cluster/project8/vyp/vincent/Software/pipeline/RNASeq/bundle/Tc1_mouse/GTF/Tc1.gff'
+#keep.dups <- FALSE
+#keep.sex <- FALSE
+
 support.frame <- opt$support.frame
 code <- opt$code
-gff <- opt$gff
 iFolder <- opt$iFolder
 annotation.file <- opt$annotation.file
+gff <- opt$gff
 keep.dups <- opt$keep.dups
 keep.sex <- opt$keep.sex
+cryptic <-  opt$cryptic
 
+dexseq.compute <- TRUE 
 
-########################## read arguments
-
-extra.plots <- TRUE 
-remove.hb   <- FALSE 
-
-message("Should I keep the sex chromosomes? Option set is ", keep.sex)
 
 ###check input files and data frame
+message('gff file is ', gff)
 message('Now reading ', support.frame)
 support <- read.table(support.frame, header = TRUE, stringsAsFactors = FALSE)
+#remove any columns that are just NA values - occurs in special cases
+support <- support[,apply(X=support,MARGIN=2,FUN=function(x) !(sum(is.na(x))==length(x)))]
+my.ids <- support$sample
 list.conditions <- grep(names(support), pattern = '^condition.*', value  = TRUE)
-list.covars <- grep(names(support), pattern = '^covar.*', value  = TRUE)
 
-
-annotation <- read.table(annotation.file, header = TRUE, sep = '\t', na.string = c('', 'NA'), quote = "" )
+annotation <- read.table(annotation.file, header = TRUE, sep = '\t', na.string = c('NA', ''), quote = "")
 names(annotation) <- ifelse (names(annotation) == "external_gene_name", "external_gene_id", names(annotation)) # trying to agree on the column names
 
+BPPARAM = MulticoreParam(workers=4)
+# if more than 8 samples are present then the job is run on 12 cores instead so make sure to use them all!
+if(nrow(support) > 8)
+  BPPARAM = MulticoreParam(workers=12)
+}
 
-### deseq output folders and files
-deseq2.folder <- paste(iFolder, '/deseq2', sep = '')
-for (folder in c(deseq2.folder)) {
-  if (! file.exists(folder)) dir.create(folder)
+if( cryptic ){
+    (files <- paste(iFolder, '/counts/',my.ids, '_dexseq_counts.txt', sep = '') )
+} else {
+    ( files <- paste(iFolder, '/', my.ids, '/dexseq/', my.ids, '_dexseq_counts.txt', sep = '') )
 }
 
 
-########## load the count data
-
-if (keep.dups) print( deseq.counts <- paste(deseq2.folder, '/deseq_counts_', code, '_keep_dups.RData', sep = '') )
-if (!keep.dups) print( deseq.counts <- paste(deseq2.folder, '/deseq_counts_', code, '.RData', sep = '') )
-load(deseq.counts)
-
-
-### Remove the sex chromosome genes 
-if (!keep.sex) {
-  genes.on.XY <- as.character(subset(annotation, chromosome_name %in% c('X' ,'Y', 'chrX', 'chrY'), 'EnsemblID', drop = TRUE))
-  message('Prior to removing chr XY probes: ', nrow(genes.counts))
-  genes.counts <- genes.counts[ ! dimnames(genes.counts)[[1]] %in% genes.on.XY, ]                 
-  message('After removing chr XY probes: ', nrow(genes.counts))
+if (sum(!file.exists(files)) > 0) {
+  message(files [ !file.exists(files) ])
+  stop('Some input files are missing')
 }
 
 
-### Remove the hemoglobin genes (for whole blood only) 
-if(remove.hb) { 
-   message("Removing HBB, HBA1 and HBA2") 
-   hb.genes <- annotation[which(annotation$external_gene_id %in% c("HBB", "HBA1", "HBA2")), 'EnsemblID'] 
-   genes.counts <- genes.counts[ ! dimnames(genes.counts)[[1]] %in% hb.genes, ]                 
-   message('After removing hb genes: ', nrow(genes.counts))
-} 
+### dexseq output folders
+dexseq.folder <- paste(iFolder, '/dexseq', sep = '')
+dexseq.counts <- paste(dexseq.folder, '/dexseq_counts_', code, '.RData', sep = '')  ##this contains the key data
+if (!file.exists(dexseq.folder)) dir.create(dexseq.folder)
 
 
-### Loop over all proposed conditions
-for (condition in list.conditions) {
-  num.cond <- FALSE 
-  message("Processing for ", condition) 
-  samples.to.use   <- !is.na(support[,condition]) 
-  
-  genes.counts.loc <- genes.counts[, samples.to.use ]
 
-  support.loc <-  support[  samples.to.use, ]
+my.ids <- support$sample
+if (!keep.dups) countFiles <- paste(iFolder, '/', my.ids, '/dexseq/', my.ids, '_dexseq_counts.txt', sep = '')
+if (keep.dups) countFiles <- paste(iFolder, '/', my.ids, '/dexseq/', my.ids, '_dexseq_counts_keep_dups.txt', sep = '')
+if ( cryptic ) countFiles <- paste(iFolder, '/counts/', my.ids, '_dexseq_counts.txt', sep = '')
 
-## determines if the condition be treated as a factor or a numeric variable 
-  if (substr(condition, 10, 12) == "Num") { 
-     num.cond <- TRUE 
-     support.loc$condition <- as.numeric(support.loc[, condition])
-     loc.code <-  condition
-  } else { 
-     support.loc$condition <- factor(support.loc[, condition])
-     loc.code <-  paste(unique(support.loc$condition), collapse = '_')
-  } 
+countFiles
 
-################### create the appropriate folders and specify output file
-  loc.deseq2.folder <- paste(iFolder, '/deseq2/', loc.code, sep = '')
-  deseq2.figs <- paste(loc.deseq2.folder, '/figs', sep = '')
+for (condition in list.conditions){
+  message('Condition ', condition)
+  support.loc <- support
 
-  for (folder in c(loc.deseq2.folder, deseq2.figs)) {
+  ##handle the type variable
+  support.loc$condition <- factor(support[, condition])
+  loc.countFiles <- countFiles[ !is.na(support.loc$condition) ]
+  support.loc <-  support.loc[ !is.na(support.loc$condition), ]
+
+
+  ##handle the type variable
+  type.loc <- gsub(x = condition, pattern = 'condition', replacement = 'type')
+  if ( (! type.loc %in% names(support.loc)) & ('type' %in% names(support.loc))) {type.loc <- 'type'}  ##if only "type" is present, use it
+  if (type.loc %in% names(support)) {
+    support.loc$type <- factor(support.loc[, type.loc])
+    support.loc <- subset(support.loc, !is.na(type))
+  }
+
+  loc.code <-  paste(unique(support.loc$condition), collapse = '_')
+  message('Support data frame', loc.code)
+  print(support.loc)
+
+
+  ################### create the appropriate folders
+  loc.dexseq.folder <- paste(iFolder, '/dexseq/', loc.code, sep = '')
+  dexseq.figs <- paste(loc.dexseq.folder, '/figs', sep = '')
+  dexseq.data <- paste(loc.dexseq.folder, '/dexseq_', code, '_', loc.code, '.RData', sep = '')  ##this will contain the final output of dexseq
+
+  for (folder in c(loc.dexseq.folder, dexseq.figs)) {
     if (! file.exists(folder)) dir.create(folder)
   }
-  
-  if (keep.dups) output.file <- paste(loc.deseq2.folder, '/deseq_', code, '_differential_expression_keep_dups.tab', sep = '')
-  if (!keep.dups) output.file <- paste(loc.deseq2.folder, '/deseq_', code, '_differential_expression.tab', sep = '')
+  message("we got this far!")
 
-###################
-  use.covars <- FALSE
-  if (length(list.covars) > 0) {
-     use.covars <- TRUE
+  if (dexseq.compute) {  
+    #load(dexseq.counts)  ##object mycounts is key
+    #DexSeqExons <- subset(DexSeqExons, c(rep(TRUE, 300), rep(FALSE, nrow(counts(DexSeqExons)) - 300))) 
+    use.covariate <- FALSE
+    if ('type' %in% names(support.loc)) {
+      if (length(unique(as.character(support.loc$type))) > 1){
+        use.covariate <- TRUE
+      }
+    }
+
+    if (use.covariate) {
+      formuladispersion <- ~ sample + (condition + type) * exon
+      formula0 <-  ~ sample + type * exon + condition
+      formula1 <-  ~ sample + type * exon + condition * exon
+      my.design <- support.loc[, c('type', 'condition')]
+      my.design$type <- factor(my.design$type) ## probably not needed
+      my.design$condition <- factor(my.design$condition)  ## probably not needed
+      my.design.loc <- my.design  ##just to print basically
+    } 
+    else {
+      formuladispersion <-  ~ sample + condition * exon
+      formula0 <-  ~ sample + exon + condition
+      formula1 <-  ~ sample + exon + condition * exon
+      my.design <- factor(support.loc[, c('condition')])
+      my.design.loc <- support.loc[, c('condition'), drop = FALSE]  ##just to print basically
+    }
+
+    row.names(my.design.loc) <- factor(support.loc$sample)
+    message("here we go again!")
+    DexSeqExons.loc <- DEXSeqDataSetFromHTSeq(loc.countFiles,
+                                              sampleData = my.design.loc,
+                                              design = formula1,
+                                              flattenedfile = gff)
+    
+    write.table(x = my.design.loc, file = paste(loc.dexseq.folder, '/design.tab', sep = ''), row.names = TRUE, quote = FALSE, sep = '\t')
+
+    
+    
+    #message('Updating the dexseq object')
+    #DexSeqExons.loc <- DEXSeqDataSet(countData= featureCounts(mycounts),
+    #                                 sampleData = my.design.loc,
+    #                                 design= formula1,
+    #                                 groupID=geneIDs(mycounts),
+    #                                 featureID=exonIDs(mycounts),
+    #                                 transcripts = DexSeqExons@featureData@data$transcripts,
+    #                                 featureRanges = GRanges(DexSeqExons@featureData@data$chr, IRanges (start = DexSeqExons@featureData@data$start, end = DexSeqExons@featureData@data$end)) )
+
+
+    #DexSeqExons.loc <- DexSeqExons.loc[1:20,]  ##VP
+    
+    message('Starting the computations')
+    DexSeqExons.loc <- estimateSizeFactors(DexSeqExons.loc)
+
+    
+    message('Here is the part that takes a lot of time')
+    DexSeqExons.loc <- DEXSeq::estimateDispersions(DexSeqExons.loc, BPPARAM=BPPARAM)
+    #fData(DexSeqExons.loc)$dispersion <- fData(DexSeqExons.loc)$dispBeforeSharing
+    message('Done with estimateDispersions')    
+    DexSeqExons.loc <- DEXSeq::testForDEU(DexSeqExons.loc, BPPARAM=BPPARAM)
+    message('Done with testDEU')    
+    DexSeqExons.loc <- DEXSeq::estimateExonFoldChanges(DexSeqExons.loc, BPPARAM=BPPARAM)
+    message('Done with estimateFoldChange')
+    
+  ######################### output basic table
+    res <- DEXSeq::DEXSeqResults (DexSeqExons.loc)
+    logname <- grep(names(res), pattern = 'log2fold', value = TRUE)
+    res.clean <- as(res[, c('groupID', 'featureID', 'exonBaseMean', logname, 'dispersion', 'stat', 'pvalue')], 'data.frame')
+    names(res.clean)<- c("EnsemblID", "exonID", "meanBase", "log2FoldChange", "dispersion", "stat", "pvalue")
+    
+    res.clean$FDR <- p.adjust(res.clean$pvalue, method = 'fdr')    
+    res.clean$chromosome <- as.character(seqnames( res$genomicData))
+    res.clean$exon.start <- start(res$genomicData)
+    res.clean$exon.end <- end(res$genomicData)
+
+
+    res.clean$external_gene_id <- annotation$external_gene_id[ match(res.clean$EnsemblID, table = annotation$EnsemblID) ]
+    res.clean <- res.clean[, c('external_gene_id', "EnsemblID", "exonID", "meanBase", "log2FoldChange", "dispersion", "stat", "pvalue", "FDR", "chromosome", "exon.start", "exon.end")]  ### reorder the names nicely
+
+    if ('strand' %in% names(annotation)) res.clean$strand <- annotation$strand[ match(res.clean$EnsemblID, table = annotation$EnsemblID) ] ## add strand if available
+    res.clean <- res.clean[ order(res.clean$pvalue),]  ##reorder the rows
+    
+    write.csv(x = res.clean,
+              file=paste(loc.dexseq.folder, "/", code, "_", loc.code, "_SignificantExons.csv", sep = ''),
+              row.names = FALSE)
+    if (cryptic) {
+      res.clean.cryptics <- subset(res.clean,res.clean$FDR < 0.01 & grepl("i",res.clean$exonID))
+      res.clean.cryptics.up <- subset(res.clean.cryptics, res.clean.cryptics$log2FoldChange > 0)
+      res.clean.cryptics.down <- subset(res.clean.cryptics, res.clean.cryptics$log2FoldChange < 0)
+      res.clean.cryptics.NA <- subset(res.clean.cryptics, is.na(res.clean.cryptics$log2FoldChange))
+      write.table(x = res.clean.cryptics,
+           file=paste(loc.dexseq.folder, "/", code, "_", loc.code, "_CrypticExons.tab", sep = ''),
+            row.names = FALSE)
+      codes <- c("Significant Cryptic events (FDR < 0.01):", "Up-going:", "Down-going:", "NA (possible error):")
+      counts <- c(dim(res.clean.cryptics)[1], dim(res.clean.cryptics.up)[1], dim(res.clean.cryptics.down)[1], dim(res.clean.cryptics.NA)[1] ) 
+      report <- data.frame(codes,counts)
+      write.table(x = report,
+          file=paste0(loc.dexseq.folder, "/", code, "_", loc.code, "Cryptic_Report.tab"),
+          row.names = F, quote = F)
+      write.table(x = res.clean.cryptics.up[,c(10:12,1,3)],
+          file=paste0(loc.dexseq.folder, "/", code, "_", loc.code, "Cryptics_UP.bed"),
+          quote=F, row.names=F, col.names=F, sep="\t")
+      write.table(x = res.clean.cryptics.down[,c(10:12,1,3)],
+          file=paste0(loc.dexseq.folder, "/", code, "_", loc.code, "Cryptics_DOWN.bed"),
+          quote=F, row.names=F, col.names=F, sep="\t")    
+      message('Saving results in ', dexseq.data)
+      save(list = c('res.clean', 'DexSeqExons.loc'), file = dexseq.data)
+    }
+  } 
+  else {
+    message("looky here!")
+    load(dexseq.data)
   }
-  
-  if (use.covars) {
-    message("Using ", length(list.covars), " covariates") 
-    formula1 <- paste(" ~ ", paste(list.covars, collapse = "+"), " + ", condition, sep = "") 
-    formula1 <- as.formula(formula1) 
-    formula0 <- paste(" ~ ", paste(list.covars, collapse = "+"), sep = "") 
-    formula0 <- as.formula(formula0) 
-   
-    design.deseq <- support.loc[, which(names(support.loc) %in% c(condition, list.covars))]
-  } else {
-    formula1 <- as.formula(paste0("~ ", condition))
-    formula0 <- as.formula("~ 1")
-    design.deseq <- support.loc[, c(condition), drop = FALSE]
+
+  message("ok still going after avoiding the DEXSeq lifting")
+
+  ########################## Now plot a subset
+  file.remove(list.files(dexseq.figs, pattern = 'DEXSeq*', full.names = TRUE)) ##remove the old plots
+  #Altered so only plots significant CRYPTIC events
+  n.sig <- sum(res.clean$FDR < 0.01, na.rm = TRUE)
+  if (n.sig <= 50) {
+    res.cleanSigs <- subset(res.clean, FDR<0.01 & grepl("i",res.clean$exonID))
+  } else res.cleanSigs <- subset(res.clean, grepl("i",res.clean$exonID))[1:50,]
+
+
+  genes.to.plot <- unique(res.cleanSigs$EnsemblID)
+  pretty.gene.names <- as.character(annotation$external_gene_id[ match(genes.to.plot, table = annotation$EnsemblID) ])
+
+  for (i in 1:length(genes.to.plot)) {
+    gene <- as.character(genes.to.plot[i])
+
+    if (!is.na(pretty.gene.names[ i ])) {
+      gene.pretty <- as.character(pretty.gene.names[ i ])
+      
+      message(i, ' ', gene, ' ', gene.pretty)
+      
+      output.pdf <- paste(dexseq.figs, '/DEXSeq-', gene.pretty, '.pdf', sep = '')
+      pdf(output.pdf, width = 16, height = 9.8)
+      plotDEXSeq(res,
+                 geneID = gene,  ##I suspect it has to be gene, otherwise it crashes
+                 cex.axis = 1.2,
+                 cex=1.3,
+                 lwd=2,
+                 legend=TRUE,
+                 displayTranscripts = TRUE,
+                 names = TRUE,
+                 main = gene.pretty)
+      dev.off()
+      print(output.pdf)
+    }
   }
 
-  
-  
-  CDS <- DESeqDataSetFromMatrix(countData = genes.counts.loc, colData = design.deseq, design = formula1)
+  message("apparently printed some genes")
 
-#################### Do the actual model fitting 
-  CDS <- DESeq(CDS, test = "LRT", reduced = formula0, 
-               minReplicatesForReplace = 5 ) 
-  deseq.res <- results(CDS)  
 
-  ### output the design information
-  row.names(design.deseq) <- support.loc$sample
-  write.table(x = design.deseq, file = paste(loc.deseq2.folder, '/design.tab', sep = ''), row.names = TRUE, quote = FALSE, sep = '\t')
-  
-############# Make the results table into a sensible format 
-  deseq.res.df <- data.frame(deseq.res) 
-  print(head(deseq.res.df)) 
-  deseq.res.df$EnsemblID <- row.names( deseq.res.df)
-  deseq.res.df <- merge(deseq.res.df, annotation, by = 'EnsemblID', all.x = TRUE)
-  deseq.res.df <- deseq.res.df[order(deseq.res.df$pvalue),]
-  print(head(deseq.res.df)) 
+  #################################### plot some graphs
 
-#################### now write the output to a file 
-  write.table(deseq.res.df, file = output.file, quote = FALSE, row.names = FALSE, sep = "\t" ) 
-  save(list = c("CDS"), file = paste0(loc.deseq2.folder, "/deseq2_object.RData")) 
-  
-######### Now add a PCA for the subset of individuals being considered
-  if(extra.plots) { 
-     if (keep.dups) { 
-        output.pca <- paste(deseq2.figs, '/', loc.code, '_pca_keepdups.pdf', sep = '')
-     } else { 
-        output.pca <- paste(deseq2.figs, '/', loc.code, '_pca.pdf', sep = '')
-     } 
+  pdf(file=paste(dexseq.figs, '/DEXSeq-MeanVsDispPoints.pdf', sep = ''))
+  plotDispEsts (DexSeqExons.loc)
+  dev.off()
 
-     rld <- rlog(CDS)
-     pdf(output.pca)
-     plotPCA(rld, intgroup = condition) 
-     dev.off() 
+    
+  pdf(file=paste(dexseq.figs, '/DEXSeq-MeanVsDispCircles.png', sep = ''))
+  plotMA(data.frame(baseMean = res.clean[,6],log2FoldChange = res.clean[,7], padj = res.clean[,5] < 0.1),
+         ylim=c(-4,4), cex=0.8)
+  dev.off()
 
-## Visualise the counts versus condition for the genes with best p-values 
-     if (keep.dups) { 
-        output.sig.genes <- paste(deseq2.figs, '/', loc.code, "_siggenes_keepdups.pdf", sep = '') 
-     } else { 
-        output.sig.genes <- paste(deseq2.figs, '/', loc.code, "_siggenes.pdf", sep = '') 
-     }
-
-     if (!num.cond) { 
-     pdf(output.sig.genes) 
-     sig.genes <- which(deseq.res.df$padj < 0.1) 
-     for (i in sig.genes) { 
-        plotCounts(CDS, gene = deseq.res.df$Ensembl[i], intgroup = condition, 
-                   transform = TRUE, main = deseq.res.df$external_gene_id[i])
-        mtext(paste("pval: ", deseq.res.df$padj[i], sep = ""), 3)  
-     } 
-     dev.off() 
-     } 
-
-     if (keep.dups) { 
-        disp.plot <- paste(deseq2.figs, '/', loc.code, "_disp_keepdups.pdf", sep = '') 
-     } else { 
-        disp.plot <- paste(deseq2.figs, '/', loc.code, "_disp.pdf", sep = '') 
-     } 
-
-     pdf(disp.plot) 
-     plotDispEsts(CDS)  
-     dev.off() 
-     
-  } # End of extra plots  
-
-} # End looping over conditions 
+  message('Done with ', condition)
+  rm(list = c('DexSeqExons.loc', 'res', 'res.clean'))
+  gc()
+}
 
 warnings()
-
 
 sessionInfo()

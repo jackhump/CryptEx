@@ -12,8 +12,12 @@ library(stringr)
 library(GenomicRanges,quietly=T)
 library(ggplot2)
 
+# don't change these!
 PSI.threshold <- 0.05
 min.canonical.control.SJs <- 5
+FDR_threshold <- 0.05
+easy_threshold <- FALSE
+
 
 options(echo=T) 
 # For development purposes I will hardcode in the Cleveland TDP mouse inputs.
@@ -74,6 +78,11 @@ if(length(opt) > 1){
 	species <- opt$species
 }
 
+# if patient data then relax P value threshold:
+if(code == "Baloh_iPSC" | code == "Prudencio"){
+	easy_threshold <- TRUE
+}
+
 
 
 if(species=="mouse"){
@@ -92,11 +101,24 @@ crypt.res <- as.data.frame(fread(dexseq.res))
 support <- read.table(support.frame,header=T,stringsAsFactors=F)
 support
 #gff <- as.data.frame(fread(exon.gff))
+
 #Filter out non-cryptic results and FDR to 0.05
-crypt.res <- subset(crypt.res,grepl("i",exonID) & FDR < 0.05)
+if(!easy_threshold){
+	crypt.res <- subset(crypt.res,grepl("i",exonID) & FDR < FDR_threshold)
+}else if(easy_threshold){
+	crypt.res <- subset(crypt.res,grepl("i",exonID) & pvalue < 0.01)
+}
+
+if(nrow(crypt.res) == 0){
+	message("crypt.res is empty - no cryptic exons with FDR < 0.05 (or P < 0.01 in easy mode)")
+	quit()
+}else{
+
+	message(paste(nrow(crypt.res),"cryptic events to analyse!"))
+}
+
 #Split the exonID to give the intron ID (the same as the upstream exon's ID) and the cryptic ID which isn't useful.
 #crypt.res$intronID <- gsub("E",'',str_split_fixed(crypt.res$exonID, "i", 2)[,1])
-#crypt.res$cryptID <- str_split_fixed(crypt.res$exonID, "i", 2)[,2]
 
 #GFF - parse the information in V9
 #str_trim removes leading whitespace, gsub removes quotes
@@ -328,6 +350,7 @@ fix.gene.names <- function(results.df,annotation){
 
 # A new version of the cryptic classifier allocates names that are less ambiguous.
 
+# EXPERIMENTAL VERSION
 cryptic.classifier <- function(crypt.counts){
 	classer <- function(subset.df,classification){
 		if(dim(subset.df)[1] > 0){
@@ -335,20 +358,14 @@ cryptic.classifier <- function(crypt.counts){
 			return(subset.df$class)
 		}
 	}
-	# Classify the tags with small fold changes or low read depths
-	FEW.READS.UP <- subset(crypt.counts, (as.numeric(log2FoldChange)) > 0  & meanBase < 3.3)
+	# Classify the tags with small fold changes or low read depths (of the number of canonical junction reads)
+	FEW.READS.UP <- subset(crypt.counts, (as.numeric(log2FoldChange)) > 0  & canonical.control.mean.SJ < min.canonical.control.SJs )
 	FEW.READS.UP$class <- classer(FEW.READS.UP,"FEW.READS.UP")
 
-	FEW.READS.DOWN <- subset(crypt.counts, (as.numeric(log2FoldChange)) < 0  & meanBase < 3.3)
+	FEW.READS.DOWN <- subset(crypt.counts, (as.numeric(log2FoldChange)) < 0  & canonical.control.mean.SJ < min.canonical.control.SJs )
 	FEW.READS.DOWN$class <- classer(FEW.READS.DOWN,"FEW.READS.DOWN")
-
-	SMALL.FOLDCHANGE.UP <- subset(crypt.counts, as.numeric(log2FoldChange) < 0.6 & as.numeric(log2FoldChange) > 0 )
-	SMALL.FOLDCHANGE.UP$class <- classer(SMALL.FOLDCHANGE.UP, "SMALL.FOLDCHANGE.UP")
-
-	SMALL.FOLDCHANGE.DOWN <- subset(crypt.counts, as.numeric(log2FoldChange) > -0.6 & as.numeric(log2FoldChange) < 0 )
-	SMALL.FOLDCHANGE.DOWN$class <- classer(SMALL.FOLDCHANGE.DOWN, "SMALL.FOLDCHANGE.DOWN")
 	
-	CLEAN.UP <- subset(crypt.counts, as.numeric(log2FoldChange) >= 0.6  & meanBase >= 3.3)
+	CLEAN.UP <- subset(crypt.counts, as.numeric(log2FoldChange) > 0  & canonical.control.mean.SJ >= min.canonical.control.SJs )
 	
 	SJ.UNSUPPORTED.UP <- subset(CLEAN.UP,
 		(CLEAN.UP$upstream.case.mean.SJ < 1 &
@@ -362,7 +379,7 @@ cryptic.classifier <- function(crypt.counts){
 		CLEAN.UP$PSI.class != "TOO.SMALL.PSI" )
 	SJ.SUPPORTED.UP$class <- classer(SJ.SUPPORTED.UP,"SJ.SUPPORTED.UP")
 	
-	CLEAN.DOWN <- subset(crypt.counts, as.numeric(log2FoldChange) <= -0.6 & meanBase >= 3.3)
+	CLEAN.DOWN <- subset(crypt.counts, as.numeric(log2FoldChange) < 0 & canonical.control.mean.SJ >= min.canonical.control.SJs )
 	SJ.UNSUPPORTED.DOWN <- subset(CLEAN.DOWN,
 	  ( CLEAN.DOWN$upstream.case.mean.SJ < 1 &
 		CLEAN.DOWN$downstream.case.mean.SJ < 1 ) |
@@ -375,7 +392,7 @@ cryptic.classifier <- function(crypt.counts){
 		CLEAN.DOWN$PSI.class != "TOO.SMALL.PSI" )
 	SJ.SUPPORTED.DOWN$class <- classer(SJ.SUPPORTED.DOWN,"SJ.SUPPORTED.DOWN")
 
-	crypt.counts.classified <- rbind(SJ.SUPPORTED.UP,SJ.SUPPORTED.DOWN,SJ.UNSUPPORTED.UP,SJ.UNSUPPORTED.DOWN,SMALL.FOLDCHANGE.UP,SMALL.FOLDCHANGE.DOWN,FEW.READS.UP,FEW.READS.DOWN)
+	crypt.counts.classified <- rbind(SJ.SUPPORTED.UP,SJ.SUPPORTED.DOWN,SJ.UNSUPPORTED.UP,SJ.UNSUPPORTED.DOWN,FEW.READS.UP,FEW.READS.DOWN)
 
 	return(crypt.counts.classified)
 }
@@ -389,7 +406,7 @@ cryptic.classifier <- function(crypt.counts){
 			return(subset.df$class)
 		}
 	}
-	# Classify the tags with small fold changes or low read depths
+	# Classify the tags with small fold changes or low read depths (of the number of canonical junction reads)
 	FEW.READS.UP <- subset(crypt.counts, (as.numeric(log2FoldChange)) > 0  & canonical.control.mean.SJ < min.canonical.control.SJs )
 	FEW.READS.UP$class <- classer(FEW.READS.UP,"FEW.READS.UP")
 
@@ -617,7 +634,8 @@ crypt.res$upstream_delta_psi <- ifelse(crypt.res$fix.strand == "+",
 crypt.res$downstream_delta_psi <- ifelse(crypt.res$fix.strand == "+",
       yes = (crypt.res$downstream.case.mean.SJ / (crypt.res$downstream.case.mean.SJ + crypt.res$canonical.case.mean.SJ) ) - (crypt.res$downstream.control.mean.SJ / (crypt.res$downstream.control.mean.SJ + crypt.res$canonical.control.mean.SJ) ), 
       no =  (crypt.res$upstream.case.mean.SJ / (crypt.res$upstream.case.mean.SJ + crypt.res$canonical.case.mean.SJ) )  - (crypt.res$upstream.control.mean.SJ / (crypt.res$upstream.control.mean.SJ + crypt.res$canonical.control.mean.SJ) ) )
-crypt.res <- crypt.res[crypt.res$FDR < 0.05,]
+
+#crypt.res <- crypt.res[crypt.res$FDR < 0.05,] # this is redundant surely?
 
 # apply delta PSI classification
 crypt.res <- cryptic.PSI.classifier(crypt.res)
@@ -650,7 +668,8 @@ graph_title <- paste0( gsub("_"," ", title.code),"\n(",species,")\nPSI.threshold
 pdf(graph1)
 p <- ggplot(crypt.res.classified,
             aes(x=as.numeric(log2FoldChange),
-                y=log10(meanBase), 
+            	y = log10(canonical.control.mean.SJ), # FOR TESTING ONLY
+                #y=log10(meanBase), 
                 colour=family,
                 alpha=family,
                 label=fix.gene.names,
