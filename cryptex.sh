@@ -9,23 +9,22 @@
 set -euo pipefail
 
 ## these variables will be arguments passed to the pipeline script by the submission script
-oFolder=/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/CryptEx
-Step2_master=${oFolder}/Step2_master.sh
+codeFolder=/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/CryptEx
+Step2_master=${codeFolder}/Step2_master.sh
 
 # R scripts for CryptEx
 Rbin=/share/apps/R/bin/R
-dexseqFinalProcessR=${oFolder}/dexseq/forked_dexseq_pipeline_v2.R
-countPrepareR=${oFolder}/dexseq/forked_counts_prepare_pipeline.R
-deseqFinalProcessR=${oFolder}/dexseq/forked_deseq2_pipeline.R
-R_support_chopper=${oFolder}/support_frame_chopper.R
+dexseqFinalProcessR=${codeFolder}/dexseq/forked_dexseq_pipeline_v2.R
+countPrepareR=${codeFolder}/dexseq/forked_counts_prepare_pipeline.R
+deseqFinalProcessR=${codeFolder}/dexseq/forked_deseq2_pipeline.R
+R_support_chopper=${codeFolder}/support_frame_chopper.R
 
 # R scripts for downstream analyses
-R_splice_junction_analyzer=${oFolder}/downstream_analyses/splice_junction_analyzer.R
-R_functional_enrichment=${oFolder}/downstream_analyses/Functional_Enrichment.R
+R_splice_junction_analyzer=${codeFolder}/downstream_analyses/splice_junction_analyzer.R
+R_functional_enrichment=${codeFolder}/downstream_analyses/Functional_Enrichment.R
 
 # dexseq_count.py comes with HTSeq
-pycount=/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/intron_retention/dexseq_count.py
-
+pycount=${codeFolder}/dexseq_count.py
 # the annotation files need to be flexible
 # ideally the user should provide just one GFF file and then CryptEx extracts the exons and calculates the introns
 
@@ -33,7 +32,7 @@ pycount=/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_bra
 #for testing only
 species="mouse"
 protein="FUS"
-support=${oFolder}/support/FUS_mouse_support.tab
+#support=${oFolder}/support/FUS_mouse_support.tab
 submit="no"
 splice_extractor=no
 gff_creator=yes
@@ -65,6 +64,9 @@ until [ -z $1 ];do
 	--submit)
 	shift
 	submit=$1;;
+	--code)
+	shift
+	code=$1;;
 	--support)
 	shift
 	support=$1;;
@@ -95,9 +97,6 @@ until [ -z $1 ];do
 	--cohort_merger)
 	shift
 	cohort_merger=$1;;
-	--strict)
-	shift
-	strict=$1;;
 	--IGV)
 	shift
 	IGV=$1;;
@@ -115,7 +114,8 @@ until [ -z $1 ];do
 	paired=$1;;
 	--stranded)
 	shift
-	stranded=$1;;
+	stranded=yes
+	libstrand=$1;;
 	-* )
 	echo "unrecognised argument: $1"
 	exit 1;;
@@ -127,12 +127,12 @@ done
 
 
 oFolder=/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/
-results=${oFolder}/${protein}_${species}
+results=${oFolder}/${protein}_${species}/${code}
 reference=${oFolder}/reference
 clusterFolder=${results}/cluster
 
 for folder in ${oFolder} ${results} ${reference} ${clusterFolder} ${clusterFolder}/out ${clusterFolder}/error ${clusterFolder}/R  ${clusterFolder}/submission; do
-    if [ ! -e $folder ]; then mkdir $folder; fi
+    if [ ! -e $folder ]; then mkdir -p $folder; fi
 done
 
 # Users provide their own GFF file and their own GFF introns file. 
@@ -179,9 +179,6 @@ intron_GFF=${intron_tweaked_GFF}
 ## Error Reporting
 # I'd like each module of the pipeline to report to a central file so I can easily check the progress of a cohort.
 report_file=${results}/report.txt
-if [[ "$strict" == "yes" ]]; then
-	report_file=${results}/report_strict${strict_num}.txt
-fi
 echo "CryptEx
 Started at:	`date`
 --Protein:	$protein
@@ -191,7 +188,6 @@ Started at:	`date`
 --Step2:	$gff_creator
 --Step3:	$read_counter
 --Step4:	$DEXSeq
---Strict:	$strict $strict_num
 Support file:
 " >> $report_file
 cat $support >> $report_file
@@ -214,11 +210,10 @@ Step1_jobscript=${clusterFolder}/submission/Step1_${protein}_${species}.sh
 # I want an array of jobs
 sample_num_1=`wc -l ${support} | awk '{print $1 - 1}' `
 
-Step1_jobID=Step1_${protein}_${species}
+Step1_jobID=Step1_${protein}_${species}_${code}
 #strict doesn't need a different jobID right? If I want to the run the pipeline on regular or Strict mode at the same time then:
 # Step 1 will run (called by regular pipeline and regular Step2 will wait for it
 # Pipeline invoked with Strict parameter doesn't run Step1 but still waits for Step1 for finish so I've created a "hold_Step1" flag.
-if [[ "$strict" == "yes" ]]; then Step1_jobID=Step1_${protein}_${species}_strict_${strict_num};fi
 echo "
 #$ -S /bin/bash
 #$ -l h_vmem=5.90G
@@ -227,7 +222,7 @@ echo "
 #$ -pe smp 1
 #$ -R y
 #$ -o ${clusterFolder}/out
-#$ -e ${report_file}
+#$ -e ${clusterFolder}/error
 #$ -N ${Step1_jobID}
 #$ -wd ${oFolder}
 #$ -t 1-${sample_num_1}	
@@ -250,6 +245,10 @@ awk 'NR >1{print $1,$2,$3}' $support | while read sample bam dataset; do
 	sample_jobscript=${clusterFolder}/submission/splice_extract_${protein}_${species}_${dataset}_${sample}.sh
 	
 	echo "
+	(>&2 echo \$HOSTNAME)
+	echo \$HOSTNAME
+	mkdir /scratch0/CryptEx_tmp
+	export TMPDIR=/scratch0/CryptEx_tmp
 #extract spliced reads from bam, ignore header. -F 256 filters out any secondary aligning reads
 #if [ ! -e ${output}.spliced.bam ]; then
 samtools view -h -F 256 $bam | awk '\$1~/@/ || \$6~/N/' | samtools view -bh - > ${output}.spliced.bam 
@@ -268,6 +267,8 @@ bedtools intersect -a ${output}.spliced.bed -b ${exon_GFF} -v > ${output}.splice
 
 #remove intermediate files - this is put on hold while I develop the method
 #rm ${output}.spliced.bed ${output}.spliced.bam ${output}.spliced.exons.bam
+
+rm -rf /scratch0/CryptEx_tmp
 	
 echo \"Step 1 finished for $sample at \`date +%H:%M:%S\` \" >> $report_file 
 " > $sample_jobscript
@@ -292,12 +293,10 @@ then
 echo "creating job script for GFF creation"
 
 Step2_jobscript=${clusterFolder}/submission/Step2_GFF_creator_${protein}_${species}.sh
-if [[ "$strict" == "yes" ]]; then Step2_jobscript=${clusterFolder}/submission/Step2_GFF_creator_${protein}_${species}_strict_${strict_num}.sh;fi
 #if Step2_jobscript already exists then remove it.
 if [ -e $Step2_jobscript ]; then rm $Step2_jobscript;fi
 
-Step2_jobID=Step2_${protein}_${species}
-if [[ "$strict" == "yes" ]]; then Step2_jobID=Step2_${protein}_${species}_strict_${strict_num};fi
+Step2_jobID=Step2_${protein}_${species}_${code}
 #extract number of datasets from the support file
 sample_num_2=`cat $support | awk 'NR > 1{print $3}' | uniq | wc -l`
 # Create the header for the master job script
@@ -322,16 +321,17 @@ Step2 started at \`date +%H:%M:%S\`
 fi      
 jobs=\"" > $Step2_jobscript
 
-for dataset in `cat $support | awk 'NR > 1{print $3}' | uniq `
-do
-if [ ! -e ${results}/${dataset}/GFF ] ; then mkdir -p ${results}/${dataset}/GFF;fi
-spliced_beds=${results}/${dataset}/splice_extraction/
-output=${results}/${dataset}/GFF/${protein}_${species}_${dataset}
-step2_dataset_script=${clusterFolder}/submission/GFF_creator_${protein}_${species}_${dataset}
-
-echo "
-bash $Step2_master --dataset ${dataset} --output ${output} --intron_BED ${intron_BED} --exon_GFF ${exon_GFF} --strict ${strict} --strict_num ${strict_num} --spliced_beds ${spliced_beds}
-" > $step2_dataset_script
+for dataset in `cat $support | awk 'NR > 1{print $3}' | uniq `;do
+	if [ ! -e ${results}/${dataset}/GFF ];then 
+		mkdir -p ${results}/${dataset}/GFF
+	fi
+	spliced_beds=${results}/${dataset}/splice_extraction/
+	output=${results}/${dataset}/GFF/${protein}_${species}_${dataset}
+	step2_dataset_script=${clusterFolder}/submission/GFF_creator_${protein}_${species}_${dataset}
+# the "strict mode" should be hard coded  now.
+	echo "
+bash $Step2_master --dataset ${dataset} --output ${output} --intron_BED ${intron_BED} --exon_GFF ${exon_GFF} --spliced_beds ${spliced_beds}
+	" > $step2_dataset_script
 
 echo $step2_dataset_script >> $Step2_jobscript
 
@@ -357,17 +357,12 @@ fi
 
 if [[ "$read_counter" = "yes" ]];then 
 
-	if [[ "$strict" == "no" ]];then
 		GFF=${results}/GFF/${protein}_${species}.total.cryptics.gff
-	elif [[ "$strict" = "yes" ]]; then
-		GFF=${results}/GFF/${protein}_${species}.strict.${strict_num}.total.cryptics.gff
-	fi
-Step3_master_jobscript=${clusterFolder}/submission/Step3_count_${protein}_${species}.sh
+Step3_master_jobscript=${clusterFolder}/submission/Step3_count_${protein}_${species}_${code}.sh
 
 step3_num=`wc -l ${support} | awk '{print $1 -1}' `
 
-Step3_jobID=Step3_${protein}_${species}
-if [[ "$strict" == "yes" ]]; then Step3_jobID=Step3_${protein}_${species}_strict_${strict_num};fi
+Step3_jobID=Step3_${protein}_${species}_${code}
 
 echo "
 #$ -S /bin/bash
@@ -392,41 +387,46 @@ jobs=\"" > $Step3_master_jobscript
 
 # separate cohort into subcohorts using sample table
 ## column 3 is 'dataset'. Each dataset should have its own count output
-awk 'NR >1{print $1,$2,$3,$4}' $support | while read sample bam dataset condition
-do
- if [[ "$strict" == "no" ]];then
-                GFF=${results}/${dataset}/GFF/${protein}_${species}_${dataset}.total.cryptics.gff
-        elif [[ "$strict" = "yes" ]]; then
-                GFF=${results}/${dataset}/GFF/${protein}_${species}_${dataset}.strict.${strict_num}.total.cryptics.gff
-        fi
+awk 'NR >1{print $1,$2,$3,$4}' $support | while read sample bam dataset condition;do
+    GFF=${results}/${dataset}/GFF/${protein}_${species}_${dataset}.total.cryptics.gff
 
+	info_table=${oFolder}/support/${protein}_${species}_info.tab
+	echo "paired: $paired"
+	echo "stranded: $stranded $libstrand"
 
-info_table=${oFolder}/support/${protein}_${species}_info.tab
-echo "paired: $paired"
-echo "stranded: $stranded"
-
-if [ -e ${info_table} ];then
-	#echo "dataset:  $dataset
-	#info_table: $info_table"
-	#echo "Info table found for cohort"
-	paired=`awk -v dataset=$dataset '$1==dataset {print $2}' $info_table`
-	stranded=`awk -v dataset=$dataset '$1==dataset {print $3}' $info_table`
-else
-paired=$paired
-stranded=$stranded
-fi
+	if [ -e ${info_table} ];then
+		#echo "dataset:  $dataset
+		#info_table: $info_table"
+		#echo "Info table found for cohort"
+		paired=`awk -v dataset=$dataset '$1==dataset {print $2}' $info_table`
+		stranded=`awk -v dataset=$dataset '$1==dataset {print $3}' $info_table`
+	else
+	paired=$paired
+	stranded=$stranded
+	fi
 
 
 # One jobscript per bam file
 	countFolder=${results}/${dataset}/counts
 	Step3_sample_jobscript=${clusterFolder}/submission/count_${dataset}_${sample}.sh
 
-	if [[ "$strict" = "yes" ]]; then
-		countFolder=${results}/${dataset}/strict_${strict_num}/counts
-		Step3_sample_jobscript=${clusterFolder}/submission/count_${dataset}_${sample}_strict_${strict_num}.sh
-	fi        
 	output=${countFolder}/${sample}_dexseq_counts.txt
 	if [ ! -e ${countFolder} ]; then mkdir -p ${countFolder};fi
+
+# taken from the RNASeq pipelin 
+	countStrand=no
+	if [[ "$libstrand" == "fr-firststrand" ]]
+	then
+	  countStrand=yes
+	  countStrandReverse=reverse
+	elif [[ "$libstrand" == "fr-secondstrand" ]]
+	then
+	  countStrand=reverse
+	  countStrandReverse=yes
+	else
+	    echo unknown libstrand $libstrand
+	fi
+
 
 	echo "
 #BEDtools implementation
@@ -434,7 +434,9 @@ fi
 #HTSeq implementation
 #introduces paired and stranded arguments.
 ## 12/12/15 - hard-coding stranded=no as the counts were coming out near-empty. Try again with this.
-python $pycount --stranded no -p ${paired} -f bam -r pos $GFF $bam ${output}
+## 14/10/16 - finally figured out why. Hah!
+
+python $pycount --stranded=${countStrand} -p ${paired} -f bam -r pos $GFF $bam ${output}
 echo \"Step 3 finished for $sample at \`date +%H:%M:%S\` \" >> $report_file 
 " > $Step3_sample_jobscript
 echo $Step3_sample_jobscript >> $Step3_master_jobscript
@@ -458,11 +460,9 @@ sanity_check=`awk 'NR == 1 {print $3}' $support `
 if [ $DEXSeq = "yes" ] && [ $sanity_check = "dataset" ] ; then
 
 Step4_master_jobscript=${clusterFolder}/submission/Step4_DEXSeq_${protein}_${species}.sh
-if [[ "$strict" == "yes" ]]; then Step4_master_jobscript=${clusterFolder}/submission/Step4_DEXSeq_${protein}_${species}_strict_$strict_num.sh;fi
 dataset_num=`cat $support | awk 'NR > 1{print $3}' | uniq | wc -l`
 
-Step4_jobID=Step4_${protein}_${species}
-if [[ "$strict" == "yes" ]]; then Step4_jobID=Step4_${protein}_${species}_strict_${strict_num};fi
+Step4_jobID=Step4_${protein}_${species}_${code}
 
 sample_num=`awk 'NR >1' $support | wc -l`
 DEXSEQ_MEM=8
@@ -511,20 +511,10 @@ cryptic=TRUE
 iFolder=${results}/${dataset}
 error_file=${clusterFolder}/R/dexseq_${dataset}.out
 
-if [ $strict = "yes" ];then
-iFolder=${results}/${dataset}/strict_${strict_num}
-DEXSeqFolder=${iFolder}/dexseq
-if [ ! -e $DEXSeqFolder ];then mkdir $DEXSeqFolder;fi
-GFF=${results}/${dataset}/GFF/${protein}_${species}_${dataset}.strict.${strict_num}.total.cryptics.gff
-jobscript=${clusterFolder}/submission/DEXSeq_${dataset}_strict_${strict_num}.sh
-support_frame=${DEXSeqFolder}/${dataset}_dexseq_frame.tab
-error_file=${clusterFolder}/R/dexseq_${dataset}_strict_${strict_num}.out
-fi
-
 ## annotation_file is defined at the start
 
 # slice up cohort support file into subcohort supports
-awk -v dataset=$dataset 'NR ==1 {print $0} $3 == dataset {print $0}' $support > ${support_frame}
+awk -v dataset=$dataset 'NR == 1 {print $0} $3 == dataset {print $0}' $support > ${support_frame}
 
 # for the downstream analysis of splice junctions. This uses the spliced.exons.bam files created in Step1
 
@@ -537,30 +527,30 @@ sample_list=`cat $support_frame | awk 'BEGIN{ORS="\t"}NR>1{print $1}'`
 
 echo "
 # DEXSeq - Cryptic Exon Analysis
-#Niko's new way of parsing shell arguments to R using optparse()
+
 ${Rbin}script ${dexseqFinalProcessR} --cryptic ${cryptic} --gff ${GFF} --keep.sex ${keepSex} --keep.dups ${keepDups} --support.frame ${support_frame} --code ${dataset} --annotation.file ${annotation_file} --iFolder ${iFolder}  > ${error_file} 2>&1
 
-#append the R output to the report
-cat ${error_file} >> ${report_file}
+# #append the R output to the report
+# cat ${error_file} >> ${report_file}
 
 
-#index the spliced bams
-for bam in $bam_list;do
-        samtools index \$bam
-done
+# #index the spliced bams
+# for bam in $bam_list;do
+#         samtools index \$bam
+# done
 
-for i in `ls ${DEXSeqFolder}/`;do
-comparison=\`echo \$i | awk -F\"/\" '{print \$(NF-1)}'\`
-        if [ -e ${DEXSeqFolder}/\${comparison}/${dataset}_\${comparison}_CrypticExons.bed ]; then
+# for i in `ls ${DEXSeqFolder}/`;do
+# comparison=\`echo \$i | awk -F\"/\" '{print \$(NF-1)}'\`
+#         if [ -e ${DEXSeqFolder}/\${comparison}/${dataset}_\${comparison}_CrypticExons.bed ]; then
 
-        bedtools multicov -bed ${DEXSeqFolder}/\${comparison}/${dataset}_\${comparison}_CrypticExons.bed -bams $bam_list -split > ${DEXSeqFolder}/\${comparison}/${dataset}_\${comparison}_SJ_analysis.bed 
+#         bedtools multicov -bed ${DEXSeqFolder}/\${comparison}/${dataset}_\${comparison}_CrypticExons.bed -bams $bam_list -split > ${DEXSeqFolder}/\${comparison}/${dataset}_\${comparison}_SJ_analysis.bed 
 
-        echo \"chr start end gene.id strand intron.id log2FC FDR $sample_list\" | tr \" \" \"\t\" > ${DEXSeqFolder}/\${comparison}/header       
-        cat ${DEXSeqFolder}/\${comparison}/header ${DEXSeqFolder}/\${comparison}/${dataset}_\${comparison}_SJ_analysis.bed > tmp 
-        mv tmp  ${DEXSeqFolder}/\${comparison}/${dataset}_\${comparison}_SJ_analysis.bed  
+#         echo \"chr start end gene.id strand intron.id log2FC FDR $sample_list\" | tr \" \" \"\t\" > ${DEXSeqFolder}/\${comparison}/header       
+#         cat ${DEXSeqFolder}/\${comparison}/header ${DEXSeqFolder}/\${comparison}/${dataset}_\${comparison}_SJ_analysis.bed > tmp 
+#         mv tmp  ${DEXSeqFolder}/\${comparison}/${dataset}_\${comparison}_SJ_analysis.bed  
 
-        fi
-done
+#         fi
+#done
 
 
 
@@ -614,7 +604,7 @@ jobs=\"" > $Step4b_master_jobscript
 # do this on a per-cohort basis and also by condition
 for dataset in `cat $support | awk 'NR > 1{print $3}' | uniq `;do
 	echo $dataset
-	DEXSeqFolder=${results}/${dataset}/strict_${strict_num}/dexseq
+	DEXSeqFolder=${results}/${dataset}/dexseq
 	if [ ! -e $DEXSeqFolder ];then
 		DEXSeqFolder=${results}/${dataset}/dexseq
 	fi
@@ -625,7 +615,7 @@ for dataset in `cat $support | awk 'NR > 1{print $3}' | uniq `;do
 #SPLICE JUNCTION ANALYSIS FOR ${dataset}
 " > $jobscript
 #different datasets have different conditions (CTL vs HET, CTL vs HOM etc. Run SJ analysis for each.)
-	for i in `ls ${results}/${dataset}/strict_500/dexseq/`;do
+	for i in `ls ${results}/${dataset}/dexseq/`;do
 		if [[ $i =~ .*[\.][a-z]+ ]];then
 		echo "$i is not a valid set of conditions"
 		continue;fi
