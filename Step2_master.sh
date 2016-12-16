@@ -6,6 +6,9 @@ until [ -z $1 ];do
         --dataset)
 	shift
 	dataset=$1;;
+	--resultsFolder)
+	shift
+	resultsFolder=$1;;
 	--output)
         shift
         output=$1;;
@@ -28,7 +31,7 @@ if [ "$#" = "0" ]; then break; fi
 done
 
 echo $output
-
+# this controls the maximum distance between pairs of novel junctions to be merged into a cryptic tag
 strict_num=500
 
 ## Concatenate all spliced intron bed files together and sort by start and coordinate
@@ -62,7 +65,9 @@ for entry in `cat ${output}.unique_gene_introns.tab`;do
 cat ${output}.merged.annotated.bed | awk 'BEGIN{OFS="\t"}{split($6,a,"_");print $1, "mouse_iGenomes_GRCm38_with_ensembl.gtf", "exonic_part", $2, $3, ".", $5, ".", "transcripts \"cryptic_exon\"; exonic_part_number \""a[2]"\"; gene_id \""a[1]"\"" }' |
                 sort -k1,1 -k2,2n > ${output}.cryptics.gff
 
+outFile=`basename $output`
+
 ## Place cryptic exons within the total exon GFF
-cat ${output}.cryptics.gff ${exon_GFF}| sort -k1,1V -k4,4n -k5,5n | awk '$14 ~ /ENS/' > $output.total.cryptics.gff
+cat ${output}.cryptics.gff ${exon_GFF}| sort -k1,1V -k4,4n -k5,5n | awk '$14 ~ /ENS/' > ${resultsFolder}/${outFile}.total.cryptics.gff
 
 exit

@@ -326,8 +326,11 @@ fix.gene.names <- function(results.df,annotation){
 		return(gene.name)
 	}
 	annotation <- as.data.frame(fread(annotation,header=T,stringsAsFactors=F))
+	annotation$strand <- gsub("-1","-",annotation$strand,fixed=T)
+	annotation$strand <- gsub("1","+",annotation$strand,fixed=T)
 	#sort out annotation and turn into a GRanges object. remove gm genes
 	names(annotation)[4:5] <- c("start","end")
+
 	anno.GRange<-  makeGRangesFromDataFrame(annotation,keep.extra.columns=T)
 	fixed.gene.names <- apply(results.df, MAR=1,FUN=function(x) gene.names.query(x[10],x[15],x[16],anno.GRange)) 
 	fixed.gene.names <- unlist(GRangesList(fixed.gene.names))

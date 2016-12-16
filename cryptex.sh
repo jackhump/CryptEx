@@ -127,7 +127,10 @@ done
 
 
 oFolder=/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/
-results=${oFolder}/${protein}_${species}/${code}
+# results folder is now a generic named folder within a results directory
+# stupid hack but should work for now
+results=${oFolder}
+# I think references should be stored in one place independent of any experiment
 reference=${oFolder}/reference
 clusterFolder=${results}/cluster
 
@@ -159,11 +162,12 @@ exon_GFF=${gff_base}_exons_only.gff
 
 # create intron_GFF and exon_GFF from the supplied GFF file. 
 
-
+# might be less hassle to write an external tool that does this before the user runs CryptEx
 
 
 #The Intron GFF, created from the exon GFF using an R script written by Devon Ryan is to be used as a BED file.
 #The BED file has information about strand,gene ID and crucially intron number. Each entry should in theory be unique.
+#only occurence of the reference folder - fix this!
 intron_BED=${oFolder}/reference/${species}_full_introns.bed
 intron_tweaked_GFF=${oFolder}/reference/${species}_introns_for_HTseq.gff
 if [ ! -e $intron_BED ];then
@@ -239,7 +243,7 @@ jobs=\"" > $Step1_jobscript
 # load in information from the support file
 awk 'NR >1{print $1,$2,$3}' $support | while read sample bam dataset; do
 	#remember this is now for each bam file in the support file
-	splicefolder=${results}/${dataset}/splice_extraction
+	splicefolder=${results}/splice_extraction
         if [ ! -e $splicefolder ]; then mkdir -p $splicefolder; fi
 	output=${splicefolder}/${dataset}_${sample}
 	sample_jobscript=${clusterFolder}/submission/splice_extract_${protein}_${species}_${dataset}_${sample}.sh
@@ -322,15 +326,19 @@ fi
 jobs=\"" > $Step2_jobscript
 
 for dataset in `cat $support | awk 'NR > 1{print $3}' | uniq `;do
-	if [ ! -e ${results}/${dataset}/GFF ];then 
-		mkdir -p ${results}/${dataset}/GFF
+	if [ ! -e ${results}/GFF ];then 
+		mkdir -p ${results}/GFF
 	fi
-	spliced_beds=${results}/${dataset}/splice_extraction/
-	output=${results}/${dataset}/GFF/${protein}_${species}_${dataset}
+	spliced_beds=${results}/splice_extraction/
+	output=${results}/GFF/${protein}_${species}_${dataset}
 	step2_dataset_script=${clusterFolder}/submission/GFF_creator_${protein}_${species}_${dataset}
-# the "strict mode" should be hard coded  now.
 	echo "
-bash $Step2_master --dataset ${dataset} --output ${output} --intron_BED ${intron_BED} --exon_GFF ${exon_GFF} --spliced_beds ${spliced_beds}
+bash $Step2_master --dataset ${dataset} --output ${output} --intron_BED ${intron_BED} --exon_GFF ${exon_GFF} --spliced_beds ${spliced_beds} --resultsFolder ${results}
+#clean up after yourself!
+# remove all files from step1
+rm -rf $spliced_beds
+# remove all files from step 2 EXCEPT for the GFF - this should be output into \$results
+rm -rf ${results}/GFF	
 	" > $step2_dataset_script
 
 echo $step2_dataset_script >> $Step2_jobscript
@@ -407,13 +415,14 @@ awk 'NR >1{print $1,$2,$3,$4}' $support | while read sample bam dataset conditio
 
 
 # One jobscript per bam file
-	countFolder=${results}/${dataset}/counts
+	#countFolder=${results}/${dataset}/counts
+	countFolder=${results}/counts
 	Step3_sample_jobscript=${clusterFolder}/submission/count_${dataset}_${sample}.sh
 
 	output=${countFolder}/${sample}_dexseq_counts.txt
 	if [ ! -e ${countFolder} ]; then mkdir -p ${countFolder};fi
 
-# taken from the RNASeq pipelin 
+# taken from the RNASeq pipeline 
 	countStrand=no
 	if [[ "$libstrand" == "fr-firststrand" ]]
 	then
@@ -427,7 +436,7 @@ awk 'NR >1{print $1,$2,$3,$4}' $support | while read sample bam dataset conditio
 	    echo unknown libstrand $libstrand
 	fi
 
-
+# replace HTSeq with featureCounts soon!
 	echo "
 #BEDtools implementation
 #bedtools multicov -bed $GFF -bams $bam -split | awk '{print \$14,\$12,\$NF}' | tr -d '\";' | awk '{print \$1 \":\" \$2 \"\t\" \$3}' > ${output}
@@ -500,7 +509,7 @@ jobs=\"" > $Step4_master_jobscript
 for dataset in `cat $support | awk 'NR > 1{print $3}' | uniq `  
 do
 
-DEXSeqFolder=${results}/${dataset}/dexseq
+DEXSeqFolder=${results}/dexseq
 if [ ! -e $DEXSeqFolder ]; then mkdir $DEXSeqFolder; fi
 support_frame=${DEXSeqFolder}/${dataset}_dexseq_frame.tab
 jobscript=${clusterFolder}/submission/DEXSeq_${dataset}.sh
@@ -795,7 +804,7 @@ cryptic=TRUE
 # look for where the dexseq counts are
 dexseq_counts=${results}/${dataset}/counts
 if [ ! -e $dexseq_counts ]; then
-dexseq_counts=${results}/${dataset}/strict_${strict_num}/counts
+mkdir $dexseq_counts
 fi
 #check this step hasn't already been attempted
 new_countFolder=${outFolder}/dexseq/
