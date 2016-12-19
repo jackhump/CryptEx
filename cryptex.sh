@@ -109,6 +109,9 @@ until [ -z $1 ];do
 	--hold_Step1)
 	shift
 	hold_Step1=$1;;
+	--oFolder)
+	shift
+	oFolder=$1;;
 	--paired)
 	shift
 	paired=$1;;
@@ -125,8 +128,8 @@ if [ "$#" = "0" ]; then break; fi
 	echo $1 $2
 done
 
-
-oFolder=/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/
+# why is this hardcoded?
+#oFolder=/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/
 # results folder is now a generic named folder within a results directory
 # stupid hack but should work for now
 results=${oFolder}
