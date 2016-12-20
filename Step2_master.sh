@@ -18,6 +18,9 @@ until [ -z $1 ];do
 	--spliced_beds)
 	shift
 	spliced_beds=$1;;
+	--gffReducer)
+	shift
+	gffReducer=$1;;
 	--exon_GFF)
 	shift
 	exon_GFF=$1;;
@@ -78,7 +81,7 @@ cat ${output}.cryptics.gff ${exon_GFF}| sort -k1,1V -k4,4n -k5,5n | awk '$14 ~ /
 # write list of genes that contain cryptic tags
 # in R:
 
-Rscript gff_reducer.R --output ${output} --resFolder ${resFolder} --exon_GFF ${exon_GFF} --outFile ${outFile}
+Rscript ${gffReducer} --output ${output} --resFolder ${resFolder} --exon_GFF ${exon_GFF} --outFile ${outFile}
 
 # test whether the reduced GFF is as good as the the full!
 

@@ -18,7 +18,7 @@ dexseqFinalProcessR=${codeFolder}/dexseq/forked_dexseq_pipeline_v2.R
 countPrepareR=${codeFolder}/dexseq/forked_counts_prepare_pipeline.R
 deseqFinalProcessR=${codeFolder}/dexseq/forked_deseq2_pipeline.R
 R_support_chopper=${codeFolder}/support_frame_chopper.R
-
+gff_reducer=${codeFolder}/gff_reducer.R
 # R scripts for downstream analyses
 R_splice_junction_analyzer=${codeFolder}/downstream_analyses/splice_junction_analyzer.R
 R_functional_enrichment=${codeFolder}/downstream_analyses/Functional_Enrichment.R
@@ -315,7 +315,7 @@ for dataset in `cat $support | awk 'NR > 1{print $3}' | uniq `;do
 	output=${results}/GFF/${code}_${species}_${dataset}
 	step2_dataset_script=${clusterFolder}/submission/GFF_creator_${code}_${species}_${dataset}
 	echo "
-bash -x $Step2_master --dataset ${dataset} --output ${output} --intron_BED ${intron_BED} --exon_GFF ${exon_GFF} --spliced_beds ${spliced_beds} --resFolder ${results}
+bash -x $Step2_master --dataset ${dataset} --output ${output} --intron_BED ${intron_BED} --exon_GFF ${exon_GFF} --spliced_beds ${spliced_beds} --resFolder ${results} --gffReducer ${gff_reducer}
 #clean up after yourself!
 # remove all files from step1
 rm -rf $spliced_beds
