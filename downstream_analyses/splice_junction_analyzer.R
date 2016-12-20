@@ -86,12 +86,12 @@ if(code == "Baloh_iPSC" | code == "Prudencio"){
 
 
 if(species=="mouse"){
-	annotation <- "/cluster/project8/vyp/vincent/Software/RNASeq_pipeline/bundle/mouse/biomart/biomart_annotations_mouse.tab"
+	annotationFile <- "/cluster/project8/vyp/vincent/Software/RNASeq_pipeline/bundle/mouse/biomart/biomart_annotations_mouse.tab"
 	ling.list <- c("2610507B11Rik",    "A230046K03Rik",	"Adipor2",	"Adnp2",	"Ahnak",	"Atraid",	"Cluh",	"Edem2",	"Ercc6",	"Fam21",	"Fam73a",	"Flnb",	"Ggct",	"Gsta4",	"Gtf2e2",	"Hace1",	"Hgsnat",	"Ift81",	"Lnp",	"Mettl6",	"Mib1",	"Mier1",	"Necap1",	"Nme6",	"Pir",	"Pno1",	"Ppp6c",	"Ptcd2",	"Pycr2",	"Sars",	"Smg5",	"Smg5",	"Snapc3",	"Spata13",	"Spata7",	"Spcs2",	"Sptbn4",	"Sulf1",	"Synj2bp",	"Tecpr1",	"Tnfaip1",	"Tnks2",	"Tnnt1",	"Trim8",	"Uggt2",	"Usp15",	"Usp15",	"Wbscr22",	"Zfp13",	"Zfp809")
 	genome.fa <- "/cluster/scratch3/vyp-scratch2/reference_datasets/RNASeq/Mouse/mm10.fa"
 }
 if(species=="human"){
-	annotation <- "/cluster/project8/vyp/vincent/Software/RNASeq_pipeline/bundle/human_hg38/biomart/biomart_annotations_human.tab"
+	annotationFile <- "/cluster/project8/vyp/vincent/Software/RNASeq_pipeline/bundle/human_hg38/biomart/biomart_annotations_human.tab"
 	ling.list <- c("EPB41L4A",    "CEP72",	"INSR",	"FAM114A2",	"PFKP",	"ST5",	"RNFT2",	"RNFT2",	"ALX1",	"AGRN",	"AGRN",	"ATG4B",	"AGRN",	"AGRN",	"ST5",	"SETD5",	"KDELC2",	"MUC16",	"PKN1",	"IRF9",	"UPF2",	"GPSM2",	"XPO4",	"RASA4",	"RASA4B",	"PARP6",	"KRT7",	"TRAPPC12",	"RANBP1",	"HERC6",	"BLZF1",	"ZFP91",	"HDGFRP2",	"MAP3K8",	"SSFA2",	"CENPK",	"ITPR3",	"KYNU",	"IRF9",	"COL4A6",	"KYNU")
 #might be wrong
 	genome.fa <- "/cluster/scratch3/vyp-scratch2/reference_datasets/human_reference_sequence/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.fa "
@@ -325,7 +325,7 @@ fix.gene.names <- function(results.df,annotation){
 		}
 		return(gene.name)
 	}
-	annotation <- as.data.frame(fread(annotation,header=T,stringsAsFactors=F))
+	annotation <- as.data.frame(fread(annotationFile,header=T,stringsAsFactors=F))
 	annotation$strand <- gsub("-1","-",annotation$strand,fixed=T)
 	annotation$strand <- gsub("1","+",annotation$strand,fixed=T)
 	#sort out annotation and turn into a GRanges object. remove gm genes
