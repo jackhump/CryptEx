@@ -1,13 +1,13 @@
 #!/usr/bin/env Rscript
 
 #FOR DEBUGGING
-gff <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting//TDP-43_patient_human/Prudencio/GFF/TDP-43_patient_human_Prudencio.strict.500.total.cryptics.gff"
+gff <- "/SAN/vyplab/HuRNASeq/ENCODE/TARDBP/K562_ENCSR134JRE/processed/cryptex/K562_ENCSR134JRE_human_K562_ENCSR134JRE.reduced.total.gff"
 keep.sex <- TRUE 
 keep.dups <- FALSE 
-support.frame <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/support/Prudencio_ALS_brain_support.tab"
-code <- "Prudencio" 
+support.frame <- "/SAN/vyplab/HuRNASeq/ENCODE/TARDBP/K562_ENCSR134JRE/K562_ENCSR134JRE_cryptex_support.tab"
+code <- "test_TARDBP" 
 annotation.file <- "/cluster/project8/vyp/vincent/Software/RNASeq_pipeline/bundle/human_hg38/biomart/biomart_annotations_human.tab" 
-iFolder <- "/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting//TDP-43_patient_human/Prudencio/strict_500"
+iFolder <-  "/SAN/vyplab/HuRNASeq/ENCODE/TARDBP/K562_ENCSR134JRE/processed/cryptex/"
 cryptic <- TRUE
 
 
@@ -151,8 +151,7 @@ for (condition in list.conditions){
       my.design$type <- factor(my.design$type) ## probably not needed
       my.design$condition <- factor(my.design$condition)  ## probably not needed
       my.design.loc <- my.design  ##just to print basically
-    } 
-    else {
+    } else {
       formuladispersion <-  ~ sample + condition * exon
       formula0 <-  ~ sample + exon + condition
       formula1 <-  ~ sample + exon + condition * exon
@@ -242,11 +241,8 @@ for (condition in list.conditions){
     }
   } 
   else {
-    message("looky here!")
     load(dexseq.data)
   }
-
-  message("ok still going after avoiding the DEXSeq lifting")
 
   ########################## Now plot a subset
   file.remove(list.files(dexseq.figs, pattern = 'DEXSeq*', full.names = TRUE)) ##remove the old plots
@@ -283,8 +279,6 @@ for (condition in list.conditions){
       print(output.pdf)
     }
   }
-
-  message("apparently printed some genes")
 
 
   #################################### plot some graphs

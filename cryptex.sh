@@ -19,6 +19,7 @@ countPrepareR=${codeFolder}/dexseq/forked_counts_prepare_pipeline.R
 deseqFinalProcessR=${codeFolder}/dexseq/forked_deseq2_pipeline.R
 R_support_chopper=${codeFolder}/support_frame_chopper.R
 gff_reducer=${codeFolder}/gff_reducer.R
+featureCounts=${codeFolder}/featureCounts_script.R
 # R scripts for downstream analyses
 R_splice_junction_analyzer=${codeFolder}/downstream_analyses/splice_junction_analyzer.R
 R_functional_enrichment=${codeFolder}/downstream_analyses/Functional_Enrichment.R
@@ -192,11 +193,11 @@ echo "creating job scripts for spliced read extraction"
 #create an array job. This will contain a list of the individual jobs and execute them all together
 ## Step1_jobscript is the master job array.
 # Each sample will have its own step1 script with the form splice_extract_${sample}
-Step1_jobscript=${clusterFolder}/submission/Step1_${code}_${species}.sh
+Step1_jobscript=${clusterFolder}/submission/Step1_${code}.sh
 # I want an array of jobs
 sample_num_1=`wc -l ${support} | awk '{print $1 - 1}' `
 
-Step1_jobID=Step1_${code}_${species}_${code}
+Step1_jobID=Step1_${code}
 #strict doesn't need a different jobID right? If I want to the run the pipeline on regular or Strict mode at the same time then:
 # Step 1 will run (called by regular pipeline and regular Step2 will wait for it
 # Pipeline invoked with Strict parameter doesn't run Step1 but still waits for Step1 for finish so I've created a "hold_Step1" flag.
@@ -233,8 +234,10 @@ awk 'NR >1{print $1,$2,$3}' $support | while read sample bam dataset; do
 	echo "
 	(>&2 echo \$HOSTNAME)
 	echo \$HOSTNAME
-	mkdir /scratch0/CryptEx_tmp
-	export TMPDIR=/scratch0/CryptEx_tmp
+	# due to stupid cluster issues the TMPDIR will now just be the outFolder
+	#mkdir /scratch0/CryptEx_tmp
+	#export TMPDIR=/scratch0/CryptEx_tmp
+	export TMPDIR=${outFolder}
 #extract spliced reads from bam, ignore header. -F 256 filters out any secondary aligning reads
 #if [ ! -e ${output}.spliced.bam ]; then
 samtools view -h -F 256 $bam | awk '\$1~/@/ || \$6~/N/' | samtools view -bh - > ${output}.spliced.bam 
@@ -278,11 +281,11 @@ if [ $gff_creator = "yes" ]
 then
 echo "creating job script for GFF creation"
 
-Step2_jobscript=${clusterFolder}/submission/Step2_GFF_creator_${code}_${species}.sh
+Step2_jobscript=${clusterFolder}/submission/Step2_GFF_creator_${code}.sh
 #if Step2_jobscript already exists then remove it.
 if [ -e $Step2_jobscript ]; then rm $Step2_jobscript;fi
 
-Step2_jobID=Step2_${code}_${species}_${code}
+Step2_jobID=Step2_${code}
 #extract number of datasets from the support file
 sample_num_2=`cat $support | awk 'NR > 1{print $3}' | uniq | wc -l`
 # Create the header for the master job script
@@ -348,11 +351,13 @@ fi
 if [[ "$read_counter" = "yes" ]];then 
 
 		GFF=${results}/GFF/${code}_${species}.total.cryptics.gff
-Step3_master_jobscript=${clusterFolder}/submission/Step3_count_${code}_${species}.sh
+		#reduced version	
+		GFF=${results}/${code}_${species}_${code}.reduced.total.gff
+Step3_master_jobscript=${clusterFolder}/submission/Step3_count_${code}.sh
 
 step3_num=`wc -l ${support} | awk '{print $1 -1}' `
 
-Step3_jobID=Step3_${code}_${species}_${code}
+Step3_jobID=Step3_${code}
 
 echo "
 #$ -S /bin/bash
@@ -378,7 +383,7 @@ jobs=\"" > $Step3_master_jobscript
 # separate cohort into subcohorts using sample table
 ## column 3 is 'dataset'. Each dataset should have its own count output
 awk 'NR >1{print $1,$2,$3,$4}' $support | while read sample bam dataset condition;do
-    GFF=${results}/${dataset}/GFF/${code}_${species}_${dataset}.total.cryptics.gff
+    #GFF=${results}/${dataset}/GFF/${code}_${species}_${dataset}.total.cryptics.gff
 
 	info_table=${outFolder}/support/${code}_${species}_info.tab
 	echo "paired: $paired"
@@ -427,7 +432,13 @@ awk 'NR >1{print $1,$2,$3,$4}' $support | while read sample bam dataset conditio
 ## 12/12/15 - hard-coding stranded=no as the counts were coming out near-empty. Try again with this.
 ## 14/10/16 - finally figured out why. Hah!
 
-python $pycount --stranded=${countStrand} -p ${paired} -f bam -r pos $GFF $bam ${output}
+# HTSeq implementation
+#python $pycount --stranded=${countStrand} -p ${paired} -f bam -r pos $GFF $bam ${output}
+
+# FeatureCounts implementation - should be faster!
+Rscript $featureCounts --bam ${bam} --countStrand ${countStrand} --paired ${paired} --gff ${GFF} --output ${output} 
+
+
 echo \"Step 3 finished for $sample at \`date +%H:%M:%S\` \" >> $report_file 
 " > $Step3_sample_jobscript
 echo $Step3_sample_jobscript >> $Step3_master_jobscript
@@ -450,10 +461,10 @@ sanity_check=`awk 'NR == 1 {print $3}' $support `
 
 if [ $DEXSeq = "yes" ] && [ $sanity_check = "dataset" ] ; then
 
-Step4_master_jobscript=${clusterFolder}/submission/Step4_DEXSeq_${code}_${species}.sh
+Step4_master_jobscript=${clusterFolder}/submission/Step4_DEXSeq_${code}.sh
 dataset_num=`cat $support | awk 'NR > 1{print $3}' | uniq | wc -l`
 
-Step4_jobID=Step4_${code}_${species}_${code}
+Step4_jobID=Step4_${code}
 
 sample_num=`awk 'NR >1' $support | wc -l`
 DEXSEQ_MEM=8
@@ -496,10 +507,12 @@ if [ ! -e $DEXSeqFolder ]; then mkdir $DEXSeqFolder; fi
 support_frame=${DEXSeqFolder}/${dataset}_dexseq_frame.tab
 jobscript=${clusterFolder}/submission/DEXSeq_${dataset}.sh
 GFF=${results}/${dataset}/GFF/${code}_${species}_${dataset}.total.cryptics.gff
+#new GFF
+GFF=${results}/${code}_${species}_${code}.reduced.total.gff
 keepSex=TRUE
 keepDups=FALSE
 cryptic=TRUE
-iFolder=${results}/${dataset}
+iFolder=${results}
 error_file=${clusterFolder}/R/dexseq_${dataset}.out
 
 ## annotation_file is defined at the start
@@ -520,6 +533,9 @@ echo "
 # DEXSeq - Cryptic Exon Analysis
 
 ${Rbin}script ${dexseqFinalProcessR} --cryptic ${cryptic} --gff ${GFF} --keep.sex ${keepSex} --keep.dups ${keepDups} --support.frame ${support_frame} --code ${dataset} --annotation.file ${annotation_file} --iFolder ${iFolder}  > ${error_file} 2>&1
+   echo \"
+Step4 started at \`date +%H:%M:%S\`
+\" >> $report_file
 
 # #append the R output to the report
 # cat ${error_file} >> ${report_file}
@@ -564,11 +580,11 @@ fi
 
 if [[ "$splice_junction_analyzer" == "yes" ]]; then
 
-Step4b_master_jobscript=${clusterFolder}/submission/Step4b_SJ_analyzer_${code}_${species}.sh
+Step4b_master_jobscript=${clusterFolder}/submission/Step4b_SJ_analyzer_${code}.sh
 
 dataset_num=`cat $support | awk 'NR > 1{print $3}' | uniq | wc -l`
 
-Step4b_jobID=Step4b_${code}_${species}
+Step4b_jobID=Step4b_${code}
 
 echo "
 #$ -S /bin/bash
@@ -595,29 +611,50 @@ jobs=\"" > $Step4b_master_jobscript
 # do this on a per-cohort basis and also by condition
 for dataset in `cat $support | awk 'NR > 1{print $3}' | uniq `;do
 	echo $dataset
-	DEXSeqFolder=${results}/${dataset}/dexseq
+	DEXSeqFolder=${results}/dexseq
 	if [ ! -e $DEXSeqFolder ];then
-		DEXSeqFolder=${results}/${dataset}/dexseq
+		echo $DEXSeqFolder "does not exist"
+		#DEXSeqFolder=${results}/dexseq
 	fi
 	SJoutFolder=${results}/splice_junction_analysis
-		if [ ! -e $SJoutFolder ]; then mkdir $SJoutFolder; fi
+	if [ ! -e $SJoutFolder ]; then mkdir $SJoutFolder; fi
 	jobscript=${clusterFolder}/submission/SJ_analyzer_${dataset}.sh
-			echo "
+		echo "
 #SPLICE JUNCTION ANALYSIS FOR ${dataset}
 " > $jobscript
+	# first check if the support only has two conditions
+	support_conditions=` awk 'NR > 1 {print $4 } ' $support | sort | uniq `
+    condition_length=`echo $support_conditions | awk '{print NF }' `
+    echo $support_conditions
+    echo $condition_length
+	if [ ${condition_length} -lt 3 ];then
+		echo "two conditions found in the support - will assume the order"
+		condition_names=` echo $support_conditions | tr ' ' '_' `
+		dexseq_res=${DEXSeqFolder}/${condition_names}/${dataset}_${condition_names}_SignificantExons.csv
+		support_frame=${SJoutFolder}/${dataset}_support_frame.tab
+		error_file=${clusterFolder}/R/SJ_analyzer_${dataset}.out
+		awk -v dataset=$dataset 'NR == 1 {print $0} $3 == dataset {print $0}' $support > ${support_frame}
+		echo "
+echo $condition_names
+${Rbin}script ${R_splice_junction_analyzer} --support.frame ${support_frame} --code ${dataset} --species $species --condition.names ${condition_names} --dexseq.res ${dexseq_res} --outFolder ${SJoutFolder}  > ${error_file} 2>&1
+" >> $jobscript
+	fi
 #different datasets have different conditions (CTL vs HET, CTL vs HOM etc. Run SJ analysis for each.)
-	for i in `ls ${results}/${dataset}/dexseq/`;do
+	for i in `ls ${results}/dexseq/`;do
 		if [[ $i =~ .*[\.][a-z]+ ]];then
-		echo "$i is not a valid set of conditions"
-		continue;fi
+			echo "$i is not a valid set of conditions"
+			continue
+		fi
+		# this breaks the loop, fix!
 		condition_names=`echo $i | awk -F"/" '{print $(NF-1)}'`
 		echo $condition_names
         if [ -e ${DEXSeqFolder}/${condition_names}/${dataset}_${condition_names}_SignificantExons.csv ]; then
         	dexseq_res=${DEXSeqFolder}/${condition_names}/${dataset}_${condition_names}_SignificantExons.csv
         else 
         	echo "cannot find ${DEXSeqFolder}/${condition_names}/${dataset}_${condition_names}_CrypticExons.bed"
-        	continue
+        	# check there are only two unique conditions in the support
         fi
+        
 		
 		support_frame=${SJoutFolder}/${dataset}_support_frame.tab
 		error_file=${clusterFolder}/R/SJ_analyzer_${dataset}.out
@@ -648,11 +685,11 @@ fi
 
 if [[ "$functional_enrichment" == "yes" ]]; then
 
-Step4c_master_jobscript=${clusterFolder}/submission/Step4c_Functional_Enrichment_${code}_${species}.sh
+Step4c_master_jobscript=${clusterFolder}/submission/Step4c_Functional_Enrichment_${code}.sh
 
 dataset_num=`cat $support | awk 'NR > 1{print $3}' | uniq | wc -l`
 
-Step4c_jobID=Step4c_${code}_${species}
+Step4c_jobID=Step4c_${code}
 
 echo "
 #$ -S /bin/bash
@@ -735,10 +772,10 @@ sanity_check=`awk 'NR == 1 {print $3}' $support `
 
 if [ $DESeq = "yes" ] && [ $sanity_check = "dataset" ] ; then
 
-Step5_master_jobscript=${clusterFolder}/submission/Step5_DESeq_${code}_${species}.sh
+Step5_master_jobscript=${clusterFolder}/submission/Step5_DESeq_${code}.sh
 dataset_num=`cat $support | awk 'NR > 1{print $3}' | uniq | wc -l`
 
-Step5_jobID=Step5_${code}_${species}
+Step5_jobID=Step5_${code}
 
 echo "
 #$ -S /bin/bash

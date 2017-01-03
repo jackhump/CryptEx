@@ -96,7 +96,9 @@ if(species=="human"){
 #might be wrong
 	genome.fa <- "/cluster/scratch3/vyp-scratch2/reference_datasets/human_reference_sequence/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.fa "
 }
-files.exist(c(support.frame,dexseq.res,annotation))
+
+files.exist(c(support.frame,dexseq.res,annotationFile))
+
 crypt.res <- as.data.frame(fread(dexseq.res))
 support <- read.table(support.frame,header=T,stringsAsFactors=F)
 support
@@ -716,6 +718,8 @@ dev.off()
 
 outfile_total <- paste0(outFolder, "/", code, "_", condition.names, "_splicing_analysis.tab")
 outfile_report <- paste0(outFolder, "/", code, "_", condition.names, "_cryptic_exon_report.csv")
+outfile_report_hits <- paste0(outFolder, "/", code, "_", condition.names, "_cryptic_exon_report_hits.csv")
+
 # create an easily readable output table containing the gene name. the cryptic exon coordinates, the canonical coordinates, the strand and the level of inclusion.
 
 d <- crypt.res.classified
@@ -741,7 +745,11 @@ cryptic.report <- data.frame(gene.name = d$fix.gene.names,
 							seen.in.Ling = d$in.Ling
 							)
 
+cryptic.report.hits <- subset(cryptic.report, grepl("SJ.SUPPORTED", cryptic.report$class) )
+
 write.table(cryptic.report, outfile_report, quote=F,sep=",",row.names=F,col.names=T)
+write.table(cryptic.report.hits, outfile_report_hits, quote=F,sep=",",row.names=F,col.names=T)
+
 write.table(crypt.res.classified, outfile_total, quote=F, sep="\t",row.names=F,col.names=T)
 
 Rdata <- paste0(outFolder, "/", code, "_", condition.names, "_splicing_analysis.Rdata")

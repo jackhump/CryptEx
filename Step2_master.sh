@@ -75,13 +75,19 @@ cat ${output}.merged.annotated.bed | awk 'BEGIN{OFS="\t"}{split($6,a,"_");print 
 outFile=`basename $output`
 
 ## Place cryptic exons within the total exon GFF
-cat ${output}.cryptics.gff ${exon_GFF}| sort -k1,1V -k4,4n -k5,5n | awk '$14 ~ /ENS/' > ${resFolder}/${outFile}.total.cryptics.gff
+#cat ${output}.cryptics.gff ${exon_GFF}| sort -k1,1V -k4,4n -k5,5n | awk '$14 ~ /ENS/' > ${resFolder}/${outFile}.total.cryptics.gff
 
 # could we get rid of any genes that don't show any cryptic splicing?
 # write list of genes that contain cryptic tags
 # in R:
 
 Rscript ${gffReducer} --output ${output} --resFolder ${resFolder} --exon_GFF ${exon_GFF} --outFile ${outFile}
+
+# sort the reduced GFF
+sort -k1,1V -k4,4n -k5,5n ${resFolder}/${outFile}.unsorted.reduced.total.gff > ${resFolder}/${outFile}.reduced.total.gff
+
+# remove the previous file
+rm ${resFolder}/${outFile}.unsorted.reduced.total.gff
 
 # test whether the reduced GFF is as good as the the full!
 
