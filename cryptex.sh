@@ -316,7 +316,7 @@ for dataset in `cat $support | awk 'NR > 1{print $3}' | uniq `;do
 		mkdir -p ${results}/GFF
 	fi
 	spliced_beds=${results}/splice_extraction/
-	output=${results}/GFF/${code}_${species}_${dataset}
+	output=${results}/GFF/${code}_${species}
 	step2_dataset_script=${clusterFolder}/submission/GFF_creator_${code}_${species}_${dataset}
 	echo "
 bash -x $Step2_master --dataset ${dataset} --output ${output} --intron_BED ${intron_BED} --exon_GFF ${exon_GFF} --spliced_beds ${spliced_beds} --resFolder ${results} --gffReducer ${gff_reducer}
@@ -351,9 +351,9 @@ fi
 
 if [[ "$read_counter" = "yes" ]];then 
 
-		GFF=${results}/GFF/${code}_${species}.total.cryptics.gff
+		#GFF=${results}/GFF/${code}_${species}.total.cryptics.gff
 		#reduced version	
-		GFF=${results}/${code}_${species}_${code}.reduced.total.gff
+		GFF=${results}/${code}_${species}.reduced.total.gff
 Step3_master_jobscript=${clusterFolder}/submission/Step3_count_${code}.sh
 
 step3_num=`wc -l ${support} | awk '{print $1 -1}' `
