@@ -23,6 +23,7 @@ featureCounts=${codeFolder}/featureCounts_script.R
 # R scripts for downstream analyses
 R_splice_junction_analyzer=${codeFolder}/downstream_analyses/splice_junction_analyzer.R
 R_functional_enrichment=${codeFolder}/downstream_analyses/Functional_Enrichment.R
+R_retrotransposon_enrichment=${codeFolder}/downstream_analyses/retrotransposon_enrichment.R
 
 # dexseq_count.py comes with HTSeq
 pycount=${codeFolder}/dexseq_count.py
@@ -685,7 +686,7 @@ fi
 
 if [[ "$functional_enrichment" == "yes" ]]; then
 
-Step4c_master_jobscript=${clusterFolder}/submission/Step4c_Functional_Enrichment_${code}.sh
+Step4c_master_jobscript=${clusterFolder}/submission/Step4c_retrotransposon_enrichment_${code}.sh
 
 dataset_num=`cat $support | awk 'NR > 1{print $3}' | uniq | wc -l`
 
@@ -716,17 +717,17 @@ jobs=\"" > $Step4c_master_jobscript
 # do this on a per-cohort basis and also by condition
 for dataset in `cat $support | awk 'NR > 1{print $3}' | uniq `;do
 	echo $dataset
-	SJAnalysisFolder=${results}/${dataset}/splice_junction_analysis
+	SJAnalysisFolder=${results}/splice_junction_analysis
 	if [ ! -e $SJAnalysisFolder ];then
 		echo "cannot find splice junction analysis. Have you run Step 4b?"
 	fi
-	outFolder=${results}/${dataset}
-	jobscript=${clusterFolder}/submission/functional_enrichment_${dataset}.sh
+	outFolder=${results}/
+	jobscript=${clusterFolder}/submission/retrotransposon_enrichment_${dataset}.sh
 			echo "
 #ENRICHMENT ANALYSIS FOR ${dataset}
 " > $jobscript
 #different datasets have different conditions (CTL vs HET, CTL vs HOM etc. Run enrichment analysis for each.)
-	for i in `ls ${results}/${dataset}/strict_500/dexseq/`;do
+	for i in `ls ${results}/dexseq/`;do
 		if [[ $i =~ .*[\.][a-z]+ ]];then
 		echo "$i is not a valid set of conditions"
 		continue;fi
@@ -738,13 +739,13 @@ for dataset in `cat $support | awk 'NR > 1{print $3}' | uniq `;do
         fi
 		
 		support_frame=${outFolder}/${dataset}_support_frame.tab
-		error_file=${clusterFolder}/R/Functional_Enrichment_${dataset}.out
+		error_file=${clusterFolder}/R/retrotransposon_enrichment_${dataset}.out
 
 		awk -v dataset=$dataset 'NR == 1 {print $0} $3 == dataset {print $0}' $support > ${support_frame}
 
 		echo "
 echo $condition_names
-${Rbin}script ${R_functional_enrichment} --support.frame ${support_frame} --code ${dataset} --species $species --condition.names ${condition_names} --outFolder ${outFolder}  > ${error_file} 2>&1
+${Rbin}script ${R_retrotransposon_enrichment} --support.frame ${support_frame} --code ${dataset} --species $species --condition.names ${condition_names} --outFolder ${outFolder}  > ${error_file} 2>&1
 " >> $jobscript
 			done
 
@@ -756,7 +757,7 @@ echo "\"
 script=\`echo \$jobs | cut -f\$SGE_TASK_ID -d \" \"\`
 sh \$script
 " >> $Step4c_master_jobscript
-echo "creating job scripts for splice junction analysis"
+echo "creating job scripts for retrotransposon enrichment"
 fi
 
 
