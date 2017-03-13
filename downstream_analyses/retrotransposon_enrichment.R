@@ -53,6 +53,13 @@ if(length(opt) > 1){
 	species <- opt$species
 }
 
+# stupid hack
+title <- code
+#code <- paste( str_split_fixed(code , '_', 3 )[,1:2], collapse = "_" )
+
+print(title)
+print(code)
+
 splicing_analysis.res <- paste0(outFolder,"/splice_junction_analysis/",code,"_",condition.names,"_splicing_analysis.tab")
 case.SJs <- paste0(outFolder,"/splice_junction_analysis/",code,"_SJs_case.tab")
 
@@ -278,11 +285,15 @@ bed.files <- list(cryptic.exons.flank.bed, cryptic.introns.random.samples.bed, a
 
 # RepeatMasker overlap - how many of the cryptic segments overlap a repeat region compared to the null exons?
 RM.files <- list()
-rep.type <- c("ALL","ALU+","ALU-","LINE+","LINE-","SINE+","SINE-","LC+","LC-","SR+","SR-")
+rep.type <- c("ALL","ALU+","ALU-","LINE+","LINE-","SINE+","SINE-","LC+","LC-","SR+","SR-","LTR+","LTR-","DNA+","DNA-" )
 feature.type <- rep.type
 rep.files <- gsub(pattern = "\\+|\\-|ALL",replacement = "",rep.type,fixed=F)
 rep.bed.files <- paste0(str_split_fixed(RepeatMasker.bed, "[.]",2)[,1],"_", rep.files,".bed")
+
+
 rep.bed.files <- sub("_.bed",".bed", rep.bed.files)
+
+file.exists(rep.bed.files)
 all.feature.bed.list <- rep.bed.files
 bed.num <- 0
 
@@ -311,6 +322,13 @@ for(i in 1:length(bed.names)){
 		RM.bed$feature.type <- feature.type[feature]
 		bed.num <- bed.num + 1
 		RM.files[[bed.num]] <- RM.bed
+		# write out the All repeats file
+		if( "ALL" %in% feature){
+			all_repeats.out <- paste0(RM.outFolder,"/All_repeats_intersect.tab")
+			allrep.cmd <- paste0("bedtools intersect -a ",bed.out, " -b ", rep.bed, " -wa -wb")
+			all_repeats.intersect <- fread(allrep.cmd) 
+			write.table(all_repeats.intersect, all_repeats.out, sep = '\t', quote = F, col.names = T, row.names = F)
+		}
 	}
 }
 RM.merge <- do.call(what = rbind, args = RM.files)
@@ -321,7 +339,7 @@ RM.merge$overlap <- ifelse(RM.merge$number.overlap.repeats > 0, 1, 0)
 RM.heatmap <- subset(RM.merge, exon.type == "cryptic_exons" & feature.type %in% rep.type)
 RM.heatmap <- as.matrix(xtabs(formula = number.overlap.repeats ~ feature.type + gene.name, data = RM.heatmap))
 
-RM.heatmap.pdf <- paste0(RM.outFolder,"/",code,"_repeatmasker_heatmap.pdf")
+RM.heatmap.pdf <- paste0(RM.outFolder,"/",title,"_repeatmasker_heatmap.pdf")
 
 hmcol <- brewer.pal(6,"Blues")
 
@@ -349,6 +367,8 @@ summarised$feature.type <- gsub("SR","Simple repeat",summarised$feature.type,fix
 summarised$feature.type <- gsub("LC","Low complexity",summarised$feature.type,fixed=F)
 summarised$feature.type <- gsub("ALU","Alu",summarised$feature.type,fixed=F)
 summarised$feature.type <- gsub("ALL","All repeats",summarised$feature.type,fixed=F)
+summarised$feature.type <- gsub("LTR","Long terminal repeats",summarised$feature.type,fixed=F)
+summarised$feature.type <- gsub("DNA","DNA repeats",summarised$feature.type,fixed=F)
 
 for(exon in c("cryptic_exons","cryptic_nulls","adjacent_nulls")){
 	s <- subset(summarised, exon.type == exon)
@@ -382,17 +402,17 @@ summarised$exon.type <- factor(x=summarised$exon.type,
 
 summarised$sig.stars <- ifelse(summarised$p.value >= 0.05, NA, ifelse(summarised$p.value >= 0.001, "*", ifelse(summarised$p.value >= 1e-16, "**", "***")))
 
-summarised.out <- paste0(RM.outFolder,"/",code,"_retrotransposon_enrichment_results.tab")
+summarised.out <- paste0(RM.outFolder,"/",title,"_retrotransposon_enrichment_results.tab")
 write.table(summarised, summarised.out, sep="\t", quote=F, row.names = F)
 
 
  
 # plot graphs 	
  
-RM.pdf <- paste0(RM.outFolder,"/",code,"_retrotransposon_enrichment_plot.pdf")
+RM.pdf <- paste0(RM.outFolder,"/",title,"_retrotransposon_enrichment_plot.pdf")
 
 summarised$feature.type <- factor(x = summarised$feature.type,
-	levels = c("All repeats","LINE sense","LINE antisense","SINE sense","SINE antisense","Alu sense","Alu antisense","Low complexity sense","Low complexity antisense","Simple repeat sense","Simple repeat antisense"))
+	levels = c("All repeats","LINE sense","LINE antisense","SINE sense","SINE antisense","Alu sense","Alu antisense","Low complexity sense","Low complexity antisense","Simple repeat sense","Simple repeat antisense", "Long terminal repeats sense", "Long terminal repeats antisense", "DNA repeats sense", "DNA repeats antisense" ))
 
 pdf(RM.pdf)
 p <- ggplot(summarised, aes(x = feature.type, y = proportion, fill = exon.type, group = exon.type) ) + 
@@ -404,11 +424,11 @@ p <- ggplot(summarised, aes(x = feature.type, y = proportion, fill = exon.type, 
 	theme_bw() +
 	theme(axis.text.x  = element_text(angle=45, vjust = 1, hjust = 1) ) +
 	scale_y_continuous(labels = scales::percent, limits = c(0,1)) +
-	ggtitle(paste0(gsub("_"," ",code)," (",species,")\ncryptic exons overlapping repetitive elements\nN = ",nrow(cryptic.exons.flank.bed)))
+	ggtitle(paste0(gsub("_"," ",title)," (",species,")\ncryptic exons overlapping repetitive elements\nN = ",nrow(cryptic.exons.flank.bed)))
 print(p)
 dev.off()
 
-
+save.image( paste0(RM.outFolder, "/", title, "_retrotransposon_enrichment.Rdata"))
 
 
 
@@ -449,8 +469,31 @@ for(i in 1:length(bed.files)){
 homer.outFolder <- paste(MOTIF.outFolder,"homer",sep="/")
 if(! file.exists(homer.outFolder) ){ dir.create(homer.outFolder)}
 homer.command <- paste0(homer.outFolder,"/homer_command.sh")
-HOMER.cmd <- paste("findMotifs.pl ",cryptic.exons.fasta," fasta ", homer.outFolder, " -fastaBg ", control.exons.fasta," -rna  -nofacts -p 4 -S 20 -len 5,6,7,8,9 -noconvert -nogo" )
-cat(HOMER.cmd, file = homer.command)
+
+clusterFolder <- paste0(outFolder,"/cluster/")
+
+homer_clusterArgs <- c("#$ -S /bin/bash",
+"#$ -l h_vmem=4G",
+"#$ -l tmem=4G",
+"#$ -l h_rt=36:00:00",
+"#$ -pe smp 1",
+"#$ -R y",
+paste0("#$ -o ", clusterFolder, "/out"),
+paste0("#$ -e ", clusterFolder, "/error"),
+paste0("#$ -N ", title, "_homer"),
+paste0("#$ -wd ", outFolder),
+"#$ -l h_rt=24:00:00" )
+
+HOMER.cmd <- c(homer_clusterArgs, 
+	paste("findMotifs.pl ",
+		cryptic.exons.fasta,
+		" fasta ", homer.outFolder, 
+		" -fastaBg ", control.exons.fasta,
+		" -rna  -nofacts -p 4 -S 20 -len 5,6,7,8,9 -noconvert -nogo" ) )
+
+cat(HOMER.cmd, file = homer.command, sep = "\n", append = F)
+# qsub it
+system( paste0("qsub ", homer.command) )
 
 save.image(paste0(RM.outFolder,code,"_Feature_Enrichment.RData") )
 
@@ -548,359 +591,359 @@ quit()
 
 
 
-# analyse all the eCLIP data from ENCODE
-
-if(species == "human") {
-
-bed.names <- c("cryptic_exons","cryptic_nulls","adjacent_nulls")
-bed.files <- list(cryptic.exons.flank.bed, cryptic.introns.random.samples.bed, adjacent.introns.random.samples.bed)
-
-for(cell in c("K562","HepG2")) {
-	ENCODE.eCLIP.files <- paste0("/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/reference/eCLIP/ALL_ENCODE/",cell,"/processed")
-	ENCODE.eCLIP.list <- list.files(ENCODE.eCLIP.files,full.names=T)
-	ENCODE.eCLIP.names <- str_split_fixed(list.files(ENCODE.eCLIP.files,full.names=F),"_",2)[,1]
-
-
-	# for testing
-	#bed.names <- c("cryptic_exons","cryptic_nulls")
-	#bed.files <- list(cryptic.exons.flank.bed, cryptic.introns.random.samples.bed)
-
-	# RepeatMasker overlap - how many of the cryptic segments overlap a repeat region compared to the null exons?
-	eCLIP.files <- list()
-	eCLIP.type <- c(ENCODE.eCLIP.names)
-	eCLIP.outFolder <- RM.outFolder
-	bed.num <- 0
-
-	# Loop over for each bed file
-	for(i in 1:length(bed.names)){
-		bed <- bed.files[[i]]
-		bed <- bed[,1:7]
-		if(names(bed)[7] != "iteration"){
-			bed <- bed[,1:6]
-			bed$iteration <- 1
-		}
-		bed.out <- paste0(eCLIP.outFolder,bed.names[i],".exons.bed")
-		write.table(bed, bed.out, row.names=F,sep="\t",col.names=F,quote=F )
-		for( type in 1:length(eCLIP.type) ){
-			rep.bed <- ENCODE.eCLIP.list[type]
-			eCLIP.cmd <- paste0("bedtools intersect -a ",bed.out, " -b ", rep.bed, " -c -s")
-			eCLIP.bed <- fread(eCLIP.cmd)
-			names(eCLIP.bed) <- c("chr","start","end","gene.name","exonID","strand","iteration","number.overlap.repeats")
-			eCLIP.bed$exon.type <- bed.names[i]
-			eCLIP.bed$feature.type <- eCLIP.type[type]
-			bed.num <- bed.num + 1
-			eCLIP.files[[bed.num]] <- eCLIP.bed
-		}
-	}
-
-
-	eCLIP.merge <- do.call(what = rbind, args = eCLIP.files)
-
-	#eCLIP.sum <- lapply(seq_along(eCLIP.files), function(i) cbind(eCLIP.files[[i]][1],sum(eCLIP.files[[i]]$number.overlap.repeats > 0) ))
-	eCLIP.merge$overlap <- ifelse(eCLIP.merge$number.overlap.repeats > 0, 1, 0)
-
-	eCLIP.heatmap <- subset(eCLIP.merge, exon.type == "cryptic_exons")
-	eCLIP.heatmap <- as.matrix(xtabs(formula = number.overlap.repeats ~ feature.type + gene.name, data = eCLIP.heatmap))
-
-	eCLIP.heatmap.pdf <- paste0(eCLIP.outFolder,"/",code,"_ENCODE_",cell,"_heatmap_total.pdf")
-
-	hmcol <- brewer.pal(6,"Greens")
-
-	pdf(eCLIP.heatmap.pdf)
-	heatmap(t(eCLIP.heatmap[rowSums(eCLIP.heatmap) != 0 ,colSums(eCLIP.heatmap) != 0]), margins = c(5,0),cex.lab = 0.5,cex.axis = 0.5,cexRow=0.5,cexCol=0.5, col=(hmcol))
-	dev.off()
-
-
-
-	eCLIP.summarised <- ddply(eCLIP.merge,c("feature.type","exon.type"), summarise, 
-		N = length(overlap), 
-		num.overlapping = sum(overlap > 0), 
-		proportion = num.overlapping / N,
-		ci_minus = binom.test(x = num.overlapping, n = N)$conf.int[1],
-		ci_plus = binom.test(x = num.overlapping, n = N)$conf.int[2] )
-	eCLIP.summarised$exon.type <- factor(x=eCLIP.summarised$exon.type, 
-		levels = c("cryptic_exons","cryptic_nulls", "adjacent_nulls") )
-	eCLIP.summarised$feature.type <- gsub("."," ", eCLIP.summarised$feature.type,fixed=T)
-	eCLIP.type <- gsub(".","\n",eCLIP.type,fixed=T)
-
-	eCLIP.summarised$feature.type <- gsub("-", " ", eCLIP.summarised$feature.type)
-	eCLIP.summarised$feature.type <- gsub("TARDBP","TDP-43", eCLIP.summarised$feature.type)
-
-	# do proportion tests
-	for(exon in c("cryptic_exons","cryptic_nulls","adjacent_nulls")){
-		s <- subset(eCLIP.summarised, exon.type == exon)
-		names(s) <- paste(exon,names(s),sep=".")
-		file.name <- paste0("summarised_",exon)
-		assign(file.name, s)
-	}
-	all.exons <- cbind(summarised_cryptic_exons,summarised_cryptic_nulls,summarised_adjacent_nulls)
-	# for each row
-
-	all.exons$cryptic_vs_null.p.value <- 1E-10
-	all.exons$cryptic_vs_adjacent.p.value <- 1E-10
-
-	for(i in 1:nrow(all.exons)){
-		all.exons$cryptic_vs_null.p.value[i] <- prop.test(x = c(all.exons[i,4], all.exons[i,11]), n = c(all.exons[i,3],all.exons[i,10]), p = NULL, alternative = "greater")$p.value
-		all.exons$cryptic_vs_adjacent.p.value[i] <- prop.test(x = c(all.exons[i,4], all.exons[i,18]), n = c(all.exons[i,3],all.exons[i,10]), p = NULL,alternative = "greater")$p.value
-	}
-	all.exons$cryptic_vs_null.padj <- p.adjust(all.exons$cryptic_vs_null.p.value, method = "bonferroni", n = length(all.exons$cryptic_vs_null.p.value) * 2) # correct for 
-	all.exons$cryptic_vs_adjacent.padj <- p.adjust(all.exons$cryptic_vs_adjacent.p.value, method = "bonferroni", n = length(all.exons$cryptic_vs_adjacent.p.value) * 2)
-
-	p.values <-  all.exons[, c(1,(ncol(all.exons) - 1), ncol(all.exons)) ]
-	names(p.values) <- c("feature.type","cryptic_nulls","adjacent_nulls")
-	p.melt <- melt(p.values, id.vars="feature.type", variable.name = "exon.type", value.name= "p.value")
-	eCLIP.summarised$p.value <- p.melt$p.value[match(paste(eCLIP.summarised$feature.type, eCLIP.summarised$exon.type), paste(p.melt$feature.type, p.melt$exon.type))]
-
-	table.name <- paste0(cell,"_all.exons")
-	assign(table.name, all.exons)
-	# plot graphs
-
-	eCLIP.pdf <- paste0(eCLIP.outFolder,"/",code,"_ENCODE_",cell,"_eCLIP_enrichment_plot.pdf")
-
-	# all RBPs
-	p <- ggplot(eCLIP.summarised, aes(x = feature.type, y = proportion, fill = exon.type, group = exon.type) ) + 
-		geom_bar(stat = "identity",position = "dodge") +
-		#geom_point(position=position_dodge(width=0.5)) + 
-		geom_errorbar(aes(ymin=ci_minus, ymax=ci_plus), 
-			width=.2,                    # Width of the error bars
-	                  position=position_dodge(.9)) +
-		scale_x_discrete("Feature type") +
-		scale_fill_discrete(name="exon type", labels=c("cryptic exon", "cryptic intron null","adjacent intron null")) +
-		ylab("Proportion of overlapping exons") + 
-		ylim(0,1) +
-		theme(axis.text.x  = element_text(angle=45, vjust = 0.5) ) +
-		ggtitle(paste0(gsub("_"," ",code)," (",species,")\n",cell," eCLIP peaks\nN = ",nrow(cryptic.exons.flank.bed),"\nPSI.threshold = ",PSI.threshold,"\ncanonical SJs min = ",min.canonical.control.SJs) )
+# # analyse all the eCLIP data from ENCODE
+
+# if(species == "human") {
+
+# bed.names <- c("cryptic_exons","cryptic_nulls","adjacent_nulls")
+# bed.files <- list(cryptic.exons.flank.bed, cryptic.introns.random.samples.bed, adjacent.introns.random.samples.bed)
+
+# for(cell in c("K562","HepG2")) {
+# 	ENCODE.eCLIP.files <- paste0("/cluster/project8/vyp/Humphrey_RNASeq_brain/jack_git/Humphrey_RNASeq_brain/splice_junction_detection/extended_hunting/reference/eCLIP/ALL_ENCODE/",cell,"/processed")
+# 	ENCODE.eCLIP.list <- list.files(ENCODE.eCLIP.files,full.names=T)
+# 	ENCODE.eCLIP.names <- str_split_fixed(list.files(ENCODE.eCLIP.files,full.names=F),"_",2)[,1]
+
+
+# 	# for testing
+# 	#bed.names <- c("cryptic_exons","cryptic_nulls")
+# 	#bed.files <- list(cryptic.exons.flank.bed, cryptic.introns.random.samples.bed)
+
+# 	# RepeatMasker overlap - how many of the cryptic segments overlap a repeat region compared to the null exons?
+# 	eCLIP.files <- list()
+# 	eCLIP.type <- c(ENCODE.eCLIP.names)
+# 	eCLIP.outFolder <- RM.outFolder
+# 	bed.num <- 0
+
+# 	# Loop over for each bed file
+# 	for(i in 1:length(bed.names)){
+# 		bed <- bed.files[[i]]
+# 		bed <- bed[,1:7]
+# 		if(names(bed)[7] != "iteration"){
+# 			bed <- bed[,1:6]
+# 			bed$iteration <- 1
+# 		}
+# 		bed.out <- paste0(eCLIP.outFolder,bed.names[i],".exons.bed")
+# 		write.table(bed, bed.out, row.names=F,sep="\t",col.names=F,quote=F )
+# 		for( type in 1:length(eCLIP.type) ){
+# 			rep.bed <- ENCODE.eCLIP.list[type]
+# 			eCLIP.cmd <- paste0("bedtools intersect -a ",bed.out, " -b ", rep.bed, " -c -s")
+# 			eCLIP.bed <- fread(eCLIP.cmd)
+# 			names(eCLIP.bed) <- c("chr","start","end","gene.name","exonID","strand","iteration","number.overlap.repeats")
+# 			eCLIP.bed$exon.type <- bed.names[i]
+# 			eCLIP.bed$feature.type <- eCLIP.type[type]
+# 			bed.num <- bed.num + 1
+# 			eCLIP.files[[bed.num]] <- eCLIP.bed
+# 		}
+# 	}
+
+
+# 	eCLIP.merge <- do.call(what = rbind, args = eCLIP.files)
+
+# 	#eCLIP.sum <- lapply(seq_along(eCLIP.files), function(i) cbind(eCLIP.files[[i]][1],sum(eCLIP.files[[i]]$number.overlap.repeats > 0) ))
+# 	eCLIP.merge$overlap <- ifelse(eCLIP.merge$number.overlap.repeats > 0, 1, 0)
+
+# 	eCLIP.heatmap <- subset(eCLIP.merge, exon.type == "cryptic_exons")
+# 	eCLIP.heatmap <- as.matrix(xtabs(formula = number.overlap.repeats ~ feature.type + gene.name, data = eCLIP.heatmap))
+
+# 	eCLIP.heatmap.pdf <- paste0(eCLIP.outFolder,"/",code,"_ENCODE_",cell,"_heatmap_total.pdf")
+
+# 	hmcol <- brewer.pal(6,"Greens")
+
+# 	pdf(eCLIP.heatmap.pdf)
+# 	heatmap(t(eCLIP.heatmap[rowSums(eCLIP.heatmap) != 0 ,colSums(eCLIP.heatmap) != 0]), margins = c(5,0),cex.lab = 0.5,cex.axis = 0.5,cexRow=0.5,cexCol=0.5, col=(hmcol))
+# 	dev.off()
+
+
+
+# 	eCLIP.summarised <- ddply(eCLIP.merge,c("feature.type","exon.type"), summarise, 
+# 		N = length(overlap), 
+# 		num.overlapping = sum(overlap > 0), 
+# 		proportion = num.overlapping / N,
+# 		ci_minus = binom.test(x = num.overlapping, n = N)$conf.int[1],
+# 		ci_plus = binom.test(x = num.overlapping, n = N)$conf.int[2] )
+# 	eCLIP.summarised$exon.type <- factor(x=eCLIP.summarised$exon.type, 
+# 		levels = c("cryptic_exons","cryptic_nulls", "adjacent_nulls") )
+# 	eCLIP.summarised$feature.type <- gsub("."," ", eCLIP.summarised$feature.type,fixed=T)
+# 	eCLIP.type <- gsub(".","\n",eCLIP.type,fixed=T)
+
+# 	eCLIP.summarised$feature.type <- gsub("-", " ", eCLIP.summarised$feature.type)
+# 	eCLIP.summarised$feature.type <- gsub("TARDBP","TDP-43", eCLIP.summarised$feature.type)
+
+# 	# do proportion tests
+# 	for(exon in c("cryptic_exons","cryptic_nulls","adjacent_nulls")){
+# 		s <- subset(eCLIP.summarised, exon.type == exon)
+# 		names(s) <- paste(exon,names(s),sep=".")
+# 		file.name <- paste0("summarised_",exon)
+# 		assign(file.name, s)
+# 	}
+# 	all.exons <- cbind(summarised_cryptic_exons,summarised_cryptic_nulls,summarised_adjacent_nulls)
+# 	# for each row
+
+# 	all.exons$cryptic_vs_null.p.value <- 1E-10
+# 	all.exons$cryptic_vs_adjacent.p.value <- 1E-10
+
+# 	for(i in 1:nrow(all.exons)){
+# 		all.exons$cryptic_vs_null.p.value[i] <- prop.test(x = c(all.exons[i,4], all.exons[i,11]), n = c(all.exons[i,3],all.exons[i,10]), p = NULL, alternative = "greater")$p.value
+# 		all.exons$cryptic_vs_adjacent.p.value[i] <- prop.test(x = c(all.exons[i,4], all.exons[i,18]), n = c(all.exons[i,3],all.exons[i,10]), p = NULL,alternative = "greater")$p.value
+# 	}
+# 	all.exons$cryptic_vs_null.padj <- p.adjust(all.exons$cryptic_vs_null.p.value, method = "bonferroni", n = length(all.exons$cryptic_vs_null.p.value) * 2) # correct for 
+# 	all.exons$cryptic_vs_adjacent.padj <- p.adjust(all.exons$cryptic_vs_adjacent.p.value, method = "bonferroni", n = length(all.exons$cryptic_vs_adjacent.p.value) * 2)
+
+# 	p.values <-  all.exons[, c(1,(ncol(all.exons) - 1), ncol(all.exons)) ]
+# 	names(p.values) <- c("feature.type","cryptic_nulls","adjacent_nulls")
+# 	p.melt <- melt(p.values, id.vars="feature.type", variable.name = "exon.type", value.name= "p.value")
+# 	eCLIP.summarised$p.value <- p.melt$p.value[match(paste(eCLIP.summarised$feature.type, eCLIP.summarised$exon.type), paste(p.melt$feature.type, p.melt$exon.type))]
+
+# 	table.name <- paste0(cell,"_all.exons")
+# 	assign(table.name, all.exons)
+# 	# plot graphs
+
+# 	eCLIP.pdf <- paste0(eCLIP.outFolder,"/",code,"_ENCODE_",cell,"_eCLIP_enrichment_plot.pdf")
+
+# 	# all RBPs
+# 	p <- ggplot(eCLIP.summarised, aes(x = feature.type, y = proportion, fill = exon.type, group = exon.type) ) + 
+# 		geom_bar(stat = "identity",position = "dodge") +
+# 		#geom_point(position=position_dodge(width=0.5)) + 
+# 		geom_errorbar(aes(ymin=ci_minus, ymax=ci_plus), 
+# 			width=.2,                    # Width of the error bars
+# 	                  position=position_dodge(.9)) +
+# 		scale_x_discrete("Feature type") +
+# 		scale_fill_discrete(name="exon type", labels=c("cryptic exon", "cryptic intron null","adjacent intron null")) +
+# 		ylab("Proportion of overlapping exons") + 
+# 		ylim(0,1) +
+# 		theme(axis.text.x  = element_text(angle=45, vjust = 0.5) ) +
+# 		ggtitle(paste0(gsub("_"," ",code)," (",species,")\n",cell," eCLIP peaks\nN = ",nrow(cryptic.exons.flank.bed),"\nPSI.threshold = ",PSI.threshold,"\ncanonical SJs min = ",min.canonical.control.SJs) )
 
-	ggsave(filename = eCLIP.pdf, plot = p, width = 40, height = 10, units = "in")
+# 	ggsave(filename = eCLIP.pdf, plot = p, width = 40, height = 10, units = "in")
 
-	ranked <- select(all.exons, cryptic_exons.feature.type, cryptic_vs_null.p.value, cryptic_vs_adjacent.p.value) %>% # select out wanted columns
-		 separate(cryptic_exons.feature.type, into = c("RBP","replicate"), sep = " ") %>% # split dataset name into gene and replicate number
-		 gather(variable,value, -(RBP:replicate)) %>%  # convert into long form
-		 unite(temp, variable, replicate) %>% # concatanate p value type with replicate number
-		 spread(temp,value) %>% # convert to wide form
-		 mutate(max.p = pmax(cryptic_vs_adjacent.p.value_1, cryptic_vs_adjacent.p.value_2, cryptic_vs_null.p.value_1, cryptic_vs_null.p.value_2) ) %>% # add new column which contains the maximum p value of the four tests
-		 arrange(max.p) %>% # arrange by ascending p value
-		 #mutate(max.p.adjust = max.p) # version with no multiple testing correction - arguing w/ Vincent
-		 mutate(max.p.adjust = p.adjust(max.p, method = "bonferroni", n = (length(max.p) ) ) ) # correct for multiple testing
-
-	ranked.hits <- filter(ranked, max.p.adjust < 0.05)
-	write.table(ranked.hits, paste0(eCLIP.outFolder,"/",code, "_ENCODE_", cell, "_eCLIP_enrichment_hits.tab"))
-	eCLIP.summarised.hits <- separate(eCLIP.summarised, feature.type, into = c("RBP","replicate"), sep = " ", remove = F) %>%
-			filter(RBP %in% ranked.hits$RBP)
-
-	p.hits <- ggplot(eCLIP.summarised.hits, aes(x = feature.type, y = proportion, fill = exon.type, group = exon.type) ) + 
-		geom_bar(stat = "identity",position = "dodge") +
-		#geom_point(position=position_dodge(width=0.5)) + 
-		geom_errorbar(aes(ymin=ci_minus, ymax=ci_plus), 
-			width=.2,                    # Width of the error bars
-	                  position=position_dodge(.9)) +
-		scale_x_discrete("Feature type") +
-		scale_fill_discrete(name="exon type", labels=c("cryptic exon", "cryptic intron null","adjacent intron null")) +
-		ylab("Proportion of overlapping exons") + 
-		scale_y_continuous(labels = scales::percent, limits = c(0,0.5)) +
-		theme(axis.text.x  = element_text(angle=45, vjust = 0.5) ) +
-		ggtitle(paste0(gsub("_"," ",code)," (",species,")\n",cell," eCLIP peaks\nN = ",nrow(cryptic.exons.flank.bed),"\nPSI.threshold = ",PSI.threshold,"\ncanonical SJs min = ",min.canonical.control.SJs) ) +
-		theme(legend.position="none") 
-
-	eCLIP.hits.pdf <- paste0(eCLIP.outFolder,"/",code,"_ENCODE_",cell,"_eCLIP_enrichment_hits.pdf")
-
-	ggsave(filename = eCLIP.hits.pdf, plot = p.hits, width = 7, height = 7, units = "in")
-
-	summarised.hits.name <- paste0(cell,".eCLIP.summarised.hits")
-	assign(summarised.hits.name, eCLIP.summarised.hits)
-
-	eCLIP.merge$feature.type <- paste(eCLIP.merge$feature.type,cell,sep="_")
-
-	merge.name <- paste0(cell,".eCLIP.merge")
-	assign(merge.name,eCLIP.merge)
-
-}
-
-
-
-# TARDBP to TDP-43
-K562.eCLIP.merge$feature.type <- gsub("TARDBP","TDP-43",K562.eCLIP.merge$feature.type)
-
-K562.eCLIP.merge.hits <- filter(K562.eCLIP.merge, grepl(paste(K562.eCLIP.summarised.hits$RBP, collapse="|"),feature.type) & exon.type == "cryptic_exons")
-HepG2.eCLIP.merge.hits <- filter(HepG2.eCLIP.merge, grepl(paste(HepG2.eCLIP.summarised.hits$RBP, collapse="|"),feature.type) & exon.type == "cryptic_exons")
-
-both.cells <- as.matrix( xtabs(number.overlap.repeats ~ gene.name + feature.type, data = rbind(K562.eCLIP.merge.hits,HepG2.eCLIP.merge.hits) ) )
-
-eCLIP.heatmap.pdf <- paste0(eCLIP.outFolder,"/",code,"_ENCODE_both_cell_types_heatmap.pdf")
-
-hmcol <- brewer.pal(6,"Greens")
-
-
-
-pdf(eCLIP.heatmap.pdf,width = 7,        # 5 x 300 pixels
-height = 7,           # 300 pixels per inch
-pointsize = 3)
-    # turn off column clustering
-my_palette <- c("white","skyblue3")
-col_breaks <- c(seq(0,1,length = 3) ) # for red
-
-
-heatmap.2((both.cells[rowSums(both.cells) != 0 ,colSums(both.cells) != 0]),
-# cellnote = (both.cells.replicates[rowSums(both.cells.replicates) != 0 ,colSums(both.cells.replicates) != 0]),  # same data set for cell labels
-  main = "Both cell types ENCODE eCLIP", # heat map title
-  notecol="black",      # change font color of cell labels to black
-  density.info="none",  # turns off density plot inside color legend
-  trace="none",         # turns off trace lines inside the heat map
-  margins =c(12,9),     # widens margins around plot
-  col=my_palette,       # use on color palette defined earlier
-  breaks=col_breaks,    # enable color transition at specified limits
-  dendrogram="column",
-  key=F,
-  colsep=seq(1,ncol(both.cells)),
-  rowsep=seq(1,nrow(both.cells)),
-  sepcolor = "lightgray",
-  sepwidth=c(0.005,0.005)     # only draw a row dendrogram
-  #Colv="NA"
-  )            # turn off column clustering
-
-
-dev.off()
-
-
-
-eCLIP.RData = paste0(eCLIP.outFolder,"/",code,"_Feature_Enrichment.RData")
-save.image(eCLIP.RData)
-
-
-# Replication - try to replicate eCLIP hits using iCLIP data
-
-replication.outFolder <- paste0(RM.outFolder,"replication/")
-if(!file.exists(replication.outFolder)){
-	dir.create(replication.outFolder)
-}
-bed.num <- 0
-replication.overlap.files <- list()
-# Loop over for each bed file
-for(i in 1:length(bed.names)){
-	bed <- bed.files[[i]]
-	bed <- bed[,1:7]
-	if(names(bed)[7] != "iteration"){
-		bed <- bed[,1:6]
-		bed$iteration <- 1
-	}
-	bed.out <- paste0(replication.outFolder,bed.names[i],".exons.bed")
-	write.table(bed, bed.out, row.names=F,sep="\t",col.names=F,quote=F )
-	for( type in 1:length(replication.file.list) ){
-		rep.bed <- replication.files[type]
-		replication.cmd <- paste0("bedtools intersect -a ",bed.out, " -b ", rep.bed, " -c -s")
-		replication.bed <- fread(replication.cmd)
-		names(replication.bed) <- c("chr","start","end","gene.name","exonID","strand","iteration","number.overlap.repeats")
-		replication.bed$exon.type <- bed.names[i]
-		replication.bed$feature.type <- replication.file.list[type]
-		bed.num <- bed.num + 1
-		replication.overlap.files[[bed.num]] <- replication.bed
-	}
-}
-replication.merge <- do.call(what = rbind, args = replication.overlap.files)
-
-replication.merge$overlap <- ifelse(replication.merge$number.overlap.repeats > 0, 1, 0)
-
-replication.summarised <- ddply(replication.merge,c("feature.type","exon.type"), summarise, 
-	N = length(overlap), 
-	num.overlapping = sum(overlap > 0), 
-	proportion = num.overlapping / N,
-	ci_minus = binom.test(x = num.overlapping, n = N)$conf.int[1],
-	ci_plus = binom.test(x = num.overlapping, n = N)$conf.int[2] )
-replication.summarised$exon.type <- factor(x=replication.summarised$exon.type, levels = c("cryptic_exons","cryptic_nulls", "adjacent_nulls") )
-replication.summarised$feature.type <- gsub("."," ", replication.summarised$feature.type,fixed=T)
-#replication.type <- gsub(".","\n",replication.type,fixed=T)
-
-replication.summarised$feature.type <- gsub("-", " ", replication.summarised$feature.type)
-replication.summarised$feature.type <- gsub("TARDBP","TDP-43", replication.summarised$feature.type)
-
-# do proportion tests
-for(exon in c("cryptic_exons","cryptic_nulls","adjacent_nulls")){
-	s <- subset(replication.summarised, exon.type == exon)
-	names(s) <- paste(exon,names(s),sep=".")
-	file.name <- paste0("summarised_",exon)
-	assign(file.name, s)
-}
-all.exons <- cbind(summarised_cryptic_exons,summarised_cryptic_nulls,summarised_adjacent_nulls)
-# for each row
-
-all.exons$cryptic_vs_null.p.value <- 1E-10
-all.exons$cryptic_vs_adjacent.p.value <- 1E-10
-
-for(i in 1:nrow(all.exons)){
-	all.exons$cryptic_vs_null.p.value[i] <- prop.test(x = c(all.exons[i,4], all.exons[i,11]), n = c(all.exons[i,3],all.exons[i,10]), p = NULL, alternative = "greater")$p.value
-	all.exons$cryptic_vs_adjacent.p.value[i] <- prop.test(x = c(all.exons[i,4], all.exons[i,18]), n = c(all.exons[i,3],all.exons[i,10]), p = NULL,alternative = "greater")$p.value
-}
-all.exons$cryptic_vs_null.padj <- p.adjust(all.exons$cryptic_vs_null.p.value, method = "bonferroni", n = length(all.exons$cryptic_vs_null.p.value) * 2) # correct for 
-all.exons$cryptic_vs_adjacent.padj <- p.adjust(all.exons$cryptic_vs_adjacent.p.value, method = "bonferroni", n = length(all.exons$cryptic_vs_adjacent.p.value) * 2)
-
-p.values <-  all.exons[, c(1,(ncol(all.exons) - 1), ncol(all.exons)) ]
-names(p.values) <- c("feature.type","cryptic_nulls","adjacent_nulls")
-p.melt <- melt(p.values, id.vars="feature.type", variable.name = "exon.type", value.name= "p.value")
-replication.summarised$p.value <- p.melt$p.value[match(paste(replication.summarised$feature.type, replication.summarised$exon.type), paste(p.melt$feature.type, p.melt$exon.type))]
-
-table.name <- paste0(cell,"_all.exons")
-assign(table.name, all.exons)
-# plot graphs
-
-replication.pdf <- paste0(replication.outFolder,"/",code,"_replication_enrichment_plot.pdf")
-
-# all RBPs
-p <- ggplot(replication.summarised, aes(x = feature.type, y = proportion, fill = exon.type, group = exon.type) ) + 
-	geom_bar(stat = "identity",position = "dodge") +
-	#geom_point(position=position_dodge(width=0.5)) + 
-	geom_errorbar(aes(ymin=ci_minus, ymax=ci_plus), 
-		width=.2,                    # Width of the error bars
-                  position=position_dodge(.9)) +
-	scale_x_discrete("Feature type") +
-	scale_fill_discrete(name="exon type", labels=c("cryptic exon", "cryptic intron null","adjacent intron null")) +
-	ylab("Proportion of overlapping exons") + 
-	theme(axis.text.x  = element_text(angle=45, vjust = 0.5) ) +
-	scale_y_continuous(labels = scales::percent, limits = c(0,1)) +
-	ggtitle(paste0(gsub("_"," ",code)," (",species,")\n",cell," iCLIP peaks\nN = ",nrow(cryptic.exons.flank.bed),"\nPSI.threshold = ",PSI.threshold,"\ncanonical SJs min = ",min.canonical.control.SJs) )
-
-ggsave(filename = replication.pdf, plot = p, width = 7, height = 7, units = "in")
-
-both.cells.replicates <- as.matrix( xtabs(number.overlap.repeats ~ gene.name + feature.type, data = rbind(K562.eCLIP.merge.hits,HepG2.eCLIP.merge.hits, replication.merge[replication.merge$exon.type == "cryptic_exons"]) ) )
-
-replication.heatmap.pdf <- paste0(replication.outFolder,"/",code,"_all_plus_replicates_heatmap.pdf")
-
-
-pdf(replication.heatmap.pdf,width = 7,        # 5 x 300 pixels
-height = 7,           # 300 pixels per inch
-pointsize = 3)
-my_palette <- c("white","skyblue3")
-col_breaks <- c(seq(0,1,length = 3) ) # for red
+# 	ranked <- select(all.exons, cryptic_exons.feature.type, cryptic_vs_null.p.value, cryptic_vs_adjacent.p.value) %>% # select out wanted columns
+# 		 separate(cryptic_exons.feature.type, into = c("RBP","replicate"), sep = " ") %>% # split dataset name into gene and replicate number
+# 		 gather(variable,value, -(RBP:replicate)) %>%  # convert into long form
+# 		 unite(temp, variable, replicate) %>% # concatanate p value type with replicate number
+# 		 spread(temp,value) %>% # convert to wide form
+# 		 mutate(max.p = pmax(cryptic_vs_adjacent.p.value_1, cryptic_vs_adjacent.p.value_2, cryptic_vs_null.p.value_1, cryptic_vs_null.p.value_2) ) %>% # add new column which contains the maximum p value of the four tests
+# 		 arrange(max.p) %>% # arrange by ascending p value
+# 		 #mutate(max.p.adjust = max.p) # version with no multiple testing correction - arguing w/ Vincent
+# 		 mutate(max.p.adjust = p.adjust(max.p, method = "bonferroni", n = (length(max.p) ) ) ) # correct for multiple testing
+
+# 	ranked.hits <- filter(ranked, max.p.adjust < 0.05)
+# 	write.table(ranked.hits, paste0(eCLIP.outFolder,"/",code, "_ENCODE_", cell, "_eCLIP_enrichment_hits.tab"))
+# 	eCLIP.summarised.hits <- separate(eCLIP.summarised, feature.type, into = c("RBP","replicate"), sep = " ", remove = F) %>%
+# 			filter(RBP %in% ranked.hits$RBP)
+
+# 	p.hits <- ggplot(eCLIP.summarised.hits, aes(x = feature.type, y = proportion, fill = exon.type, group = exon.type) ) + 
+# 		geom_bar(stat = "identity",position = "dodge") +
+# 		#geom_point(position=position_dodge(width=0.5)) + 
+# 		geom_errorbar(aes(ymin=ci_minus, ymax=ci_plus), 
+# 			width=.2,                    # Width of the error bars
+# 	                  position=position_dodge(.9)) +
+# 		scale_x_discrete("Feature type") +
+# 		scale_fill_discrete(name="exon type", labels=c("cryptic exon", "cryptic intron null","adjacent intron null")) +
+# 		ylab("Proportion of overlapping exons") + 
+# 		scale_y_continuous(labels = scales::percent, limits = c(0,0.5)) +
+# 		theme(axis.text.x  = element_text(angle=45, vjust = 0.5) ) +
+# 		ggtitle(paste0(gsub("_"," ",code)," (",species,")\n",cell," eCLIP peaks\nN = ",nrow(cryptic.exons.flank.bed),"\nPSI.threshold = ",PSI.threshold,"\ncanonical SJs min = ",min.canonical.control.SJs) ) +
+# 		theme(legend.position="none") 
+
+# 	eCLIP.hits.pdf <- paste0(eCLIP.outFolder,"/",code,"_ENCODE_",cell,"_eCLIP_enrichment_hits.pdf")
+
+# 	ggsave(filename = eCLIP.hits.pdf, plot = p.hits, width = 7, height = 7, units = "in")
+
+# 	summarised.hits.name <- paste0(cell,".eCLIP.summarised.hits")
+# 	assign(summarised.hits.name, eCLIP.summarised.hits)
+
+# 	eCLIP.merge$feature.type <- paste(eCLIP.merge$feature.type,cell,sep="_")
+
+# 	merge.name <- paste0(cell,".eCLIP.merge")
+# 	assign(merge.name,eCLIP.merge)
+
+# }
+
+
+
+# # TARDBP to TDP-43
+# K562.eCLIP.merge$feature.type <- gsub("TARDBP","TDP-43",K562.eCLIP.merge$feature.type)
+
+# K562.eCLIP.merge.hits <- filter(K562.eCLIP.merge, grepl(paste(K562.eCLIP.summarised.hits$RBP, collapse="|"),feature.type) & exon.type == "cryptic_exons")
+# HepG2.eCLIP.merge.hits <- filter(HepG2.eCLIP.merge, grepl(paste(HepG2.eCLIP.summarised.hits$RBP, collapse="|"),feature.type) & exon.type == "cryptic_exons")
+
+# both.cells <- as.matrix( xtabs(number.overlap.repeats ~ gene.name + feature.type, data = rbind(K562.eCLIP.merge.hits,HepG2.eCLIP.merge.hits) ) )
+
+# eCLIP.heatmap.pdf <- paste0(eCLIP.outFolder,"/",code,"_ENCODE_both_cell_types_heatmap.pdf")
+
+# hmcol <- brewer.pal(6,"Greens")
+
+
+
+# pdf(eCLIP.heatmap.pdf,width = 7,        # 5 x 300 pixels
+# height = 7,           # 300 pixels per inch
+# pointsize = 3)
+#     # turn off column clustering
+# my_palette <- c("white","skyblue3")
+# col_breaks <- c(seq(0,1,length = 3) ) # for red
+
+
+# heatmap.2((both.cells[rowSums(both.cells) != 0 ,colSums(both.cells) != 0]),
+# # cellnote = (both.cells.replicates[rowSums(both.cells.replicates) != 0 ,colSums(both.cells.replicates) != 0]),  # same data set for cell labels
+#   main = "Both cell types ENCODE eCLIP", # heat map title
+#   notecol="black",      # change font color of cell labels to black
+#   density.info="none",  # turns off density plot inside color legend
+#   trace="none",         # turns off trace lines inside the heat map
+#   margins =c(12,9),     # widens margins around plot
+#   col=my_palette,       # use on color palette defined earlier
+#   breaks=col_breaks,    # enable color transition at specified limits
+#   dendrogram="column",
+#   key=F,
+#   colsep=seq(1,ncol(both.cells)),
+#   rowsep=seq(1,nrow(both.cells)),
+#   sepcolor = "lightgray",
+#   sepwidth=c(0.005,0.005)     # only draw a row dendrogram
+#   #Colv="NA"
+#   )            # turn off column clustering
+
+
+# dev.off()
+
+
+
+# eCLIP.RData = paste0(eCLIP.outFolder,"/",code,"_Feature_Enrichment.RData")
+# save.image(eCLIP.RData)
+
+
+# # Replication - try to replicate eCLIP hits using iCLIP data
+
+# replication.outFolder <- paste0(RM.outFolder,"replication/")
+# if(!file.exists(replication.outFolder)){
+# 	dir.create(replication.outFolder)
+# }
+# bed.num <- 0
+# replication.overlap.files <- list()
+# # Loop over for each bed file
+# for(i in 1:length(bed.names)){
+# 	bed <- bed.files[[i]]
+# 	bed <- bed[,1:7]
+# 	if(names(bed)[7] != "iteration"){
+# 		bed <- bed[,1:6]
+# 		bed$iteration <- 1
+# 	}
+# 	bed.out <- paste0(replication.outFolder,bed.names[i],".exons.bed")
+# 	write.table(bed, bed.out, row.names=F,sep="\t",col.names=F,quote=F )
+# 	for( type in 1:length(replication.file.list) ){
+# 		rep.bed <- replication.files[type]
+# 		replication.cmd <- paste0("bedtools intersect -a ",bed.out, " -b ", rep.bed, " -c -s")
+# 		replication.bed <- fread(replication.cmd)
+# 		names(replication.bed) <- c("chr","start","end","gene.name","exonID","strand","iteration","number.overlap.repeats")
+# 		replication.bed$exon.type <- bed.names[i]
+# 		replication.bed$feature.type <- replication.file.list[type]
+# 		bed.num <- bed.num + 1
+# 		replication.overlap.files[[bed.num]] <- replication.bed
+# 	}
+# }
+# replication.merge <- do.call(what = rbind, args = replication.overlap.files)
+
+# replication.merge$overlap <- ifelse(replication.merge$number.overlap.repeats > 0, 1, 0)
+
+# replication.summarised <- ddply(replication.merge,c("feature.type","exon.type"), summarise, 
+# 	N = length(overlap), 
+# 	num.overlapping = sum(overlap > 0), 
+# 	proportion = num.overlapping / N,
+# 	ci_minus = binom.test(x = num.overlapping, n = N)$conf.int[1],
+# 	ci_plus = binom.test(x = num.overlapping, n = N)$conf.int[2] )
+# replication.summarised$exon.type <- factor(x=replication.summarised$exon.type, levels = c("cryptic_exons","cryptic_nulls", "adjacent_nulls") )
+# replication.summarised$feature.type <- gsub("."," ", replication.summarised$feature.type,fixed=T)
+# #replication.type <- gsub(".","\n",replication.type,fixed=T)
+
+# replication.summarised$feature.type <- gsub("-", " ", replication.summarised$feature.type)
+# replication.summarised$feature.type <- gsub("TARDBP","TDP-43", replication.summarised$feature.type)
+
+# # do proportion tests
+# for(exon in c("cryptic_exons","cryptic_nulls","adjacent_nulls")){
+# 	s <- subset(replication.summarised, exon.type == exon)
+# 	names(s) <- paste(exon,names(s),sep=".")
+# 	file.name <- paste0("summarised_",exon)
+# 	assign(file.name, s)
+# }
+# all.exons <- cbind(summarised_cryptic_exons,summarised_cryptic_nulls,summarised_adjacent_nulls)
+# # for each row
+
+# all.exons$cryptic_vs_null.p.value <- 1E-10
+# all.exons$cryptic_vs_adjacent.p.value <- 1E-10
+
+# for(i in 1:nrow(all.exons)){
+# 	all.exons$cryptic_vs_null.p.value[i] <- prop.test(x = c(all.exons[i,4], all.exons[i,11]), n = c(all.exons[i,3],all.exons[i,10]), p = NULL, alternative = "greater")$p.value
+# 	all.exons$cryptic_vs_adjacent.p.value[i] <- prop.test(x = c(all.exons[i,4], all.exons[i,18]), n = c(all.exons[i,3],all.exons[i,10]), p = NULL,alternative = "greater")$p.value
+# }
+# all.exons$cryptic_vs_null.padj <- p.adjust(all.exons$cryptic_vs_null.p.value, method = "bonferroni", n = length(all.exons$cryptic_vs_null.p.value) * 2) # correct for 
+# all.exons$cryptic_vs_adjacent.padj <- p.adjust(all.exons$cryptic_vs_adjacent.p.value, method = "bonferroni", n = length(all.exons$cryptic_vs_adjacent.p.value) * 2)
+
+# p.values <-  all.exons[, c(1,(ncol(all.exons) - 1), ncol(all.exons)) ]
+# names(p.values) <- c("feature.type","cryptic_nulls","adjacent_nulls")
+# p.melt <- melt(p.values, id.vars="feature.type", variable.name = "exon.type", value.name= "p.value")
+# replication.summarised$p.value <- p.melt$p.value[match(paste(replication.summarised$feature.type, replication.summarised$exon.type), paste(p.melt$feature.type, p.melt$exon.type))]
+
+# table.name <- paste0(cell,"_all.exons")
+# assign(table.name, all.exons)
+# # plot graphs
+
+# replication.pdf <- paste0(replication.outFolder,"/",code,"_replication_enrichment_plot.pdf")
+
+# # all RBPs
+# p <- ggplot(replication.summarised, aes(x = feature.type, y = proportion, fill = exon.type, group = exon.type) ) + 
+# 	geom_bar(stat = "identity",position = "dodge") +
+# 	#geom_point(position=position_dodge(width=0.5)) + 
+# 	geom_errorbar(aes(ymin=ci_minus, ymax=ci_plus), 
+# 		width=.2,                    # Width of the error bars
+#                   position=position_dodge(.9)) +
+# 	scale_x_discrete("Feature type") +
+# 	scale_fill_discrete(name="exon type", labels=c("cryptic exon", "cryptic intron null","adjacent intron null")) +
+# 	ylab("Proportion of overlapping exons") + 
+# 	theme(axis.text.x  = element_text(angle=45, vjust = 0.5) ) +
+# 	scale_y_continuous(labels = scales::percent, limits = c(0,1)) +
+# 	ggtitle(paste0(gsub("_"," ",code)," (",species,")\n",cell," iCLIP peaks\nN = ",nrow(cryptic.exons.flank.bed),"\nPSI.threshold = ",PSI.threshold,"\ncanonical SJs min = ",min.canonical.control.SJs) )
+
+# ggsave(filename = replication.pdf, plot = p, width = 7, height = 7, units = "in")
+
+# both.cells.replicates <- as.matrix( xtabs(number.overlap.repeats ~ gene.name + feature.type, data = rbind(K562.eCLIP.merge.hits,HepG2.eCLIP.merge.hits, replication.merge[replication.merge$exon.type == "cryptic_exons"]) ) )
+
+# replication.heatmap.pdf <- paste0(replication.outFolder,"/",code,"_all_plus_replicates_heatmap.pdf")
+
+
+# pdf(replication.heatmap.pdf,width = 7,        # 5 x 300 pixels
+# height = 7,           # 300 pixels per inch
+# pointsize = 3)
+# my_palette <- c("white","skyblue3")
+# col_breaks <- c(seq(0,1,length = 3) ) # for red
 
  
-#both.cells.replicates[both.cells.replicates == "0"] <- NA
+# #both.cells.replicates[both.cells.replicates == "0"] <- NA
 
-#heatmap((both.cells[rowSums(both.cells) != 0 ,colSums(both.cells) != 0]), margins = c(5,0),cex.lab = 0.5,cex.axis = 0.5,cexRow=0.5,cexCol=0.5, col=(hmcol))
-heatmap.2((both.cells.replicates[rowSums(both.cells.replicates) != 0 ,colSums(both.cells.replicates) != 0]),
-# cellnote = (both.cells.replicates[rowSums(both.cells.replicates) != 0 ,colSums(both.cells.replicates) != 0]),  # same data set for cell labels
-  main = "Both cell types ENCODE eCLIP + iCLIP replicates", # heat map title
-  notecol="black",      # change font color of cell labels to black
-  density.info="none",  # turns off density plot inside color legend
-  trace="none",         # turns off trace lines inside the heat map
-  margins =c(12,9),     # widens margins around plot
-  col=my_palette,       # use on color palette defined earlier
-  breaks=col_breaks,    # enable color transition at specified limits
-  dendrogram="both",
-  key=F,
-  colsep=seq(1,ncol(both.cells.replicates)),
-  rowsep=seq(1,nrow(both.cells.replicates)),
-  sepcolor = "lightgray",
-  sepwidth=c(0.005,0.005)     # only draw a row dendrogram
-  #Colv="NA"
-  )            # turn off column clustering
+# #heatmap((both.cells[rowSums(both.cells) != 0 ,colSums(both.cells) != 0]), margins = c(5,0),cex.lab = 0.5,cex.axis = 0.5,cexRow=0.5,cexCol=0.5, col=(hmcol))
+# heatmap.2((both.cells.replicates[rowSums(both.cells.replicates) != 0 ,colSums(both.cells.replicates) != 0]),
+# # cellnote = (both.cells.replicates[rowSums(both.cells.replicates) != 0 ,colSums(both.cells.replicates) != 0]),  # same data set for cell labels
+#   main = "Both cell types ENCODE eCLIP + iCLIP replicates", # heat map title
+#   notecol="black",      # change font color of cell labels to black
+#   density.info="none",  # turns off density plot inside color legend
+#   trace="none",         # turns off trace lines inside the heat map
+#   margins =c(12,9),     # widens margins around plot
+#   col=my_palette,       # use on color palette defined earlier
+#   breaks=col_breaks,    # enable color transition at specified limits
+#   dendrogram="both",
+#   key=F,
+#   colsep=seq(1,ncol(both.cells.replicates)),
+#   rowsep=seq(1,nrow(both.cells.replicates)),
+#   sepcolor = "lightgray",
+#   sepwidth=c(0.005,0.005)     # only draw a row dendrogram
+#   #Colv="NA"
+#   )            # turn off column clustering
 
-dev.off()
-
-
+# dev.off()
 
 
 
 
 
-quit()
-quit
+
+
+# quit()
+# quit
 

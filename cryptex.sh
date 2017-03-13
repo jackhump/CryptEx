@@ -24,7 +24,8 @@ featureCounts=${codeFolder}/featureCounts_script.R
 R_splice_junction_analyzer=${codeFolder}/downstream_analyses/splice_junction_analyzer.R
 R_functional_enrichment=${codeFolder}/downstream_analyses/Functional_Enrichment.R
 R_retrotransposon_enrichment=${codeFolder}/downstream_analyses/retrotransposon_enrichment.R
-
+R_CLIP_enrichment=${codeFolder}/downstream_analyses/CLIP_enrichment.R
+R_conservation=${codeFolder}/downstream_analyses/conservation_analysis.R
 # dexseq_count.py comes with HTSeq
 pycount=${codeFolder}/dexseq_count.py
 # the annotation files need to be flexible
@@ -103,6 +104,15 @@ until [ -z $1 ];do
 	shift
 	stranded=yes
 	libstrand=$1;;
+	--CLIP)
+	shift
+	CLIP=$1;;
+	--retrotransposons)
+	shift
+	retrotransposons=$1;;
+	--conservation)
+	shift
+	conservation=$1;;
 	-* )
 	echo "unrecognised argument: $1"
 	exit 1;;
@@ -351,9 +361,9 @@ fi
 
 if [[ "$read_counter" = "yes" ]];then 
 
-		GFF=${results}/GFF/${code}_${species}.total.cryptics.gff
+		#GFF=${results}/GFF/${code}_${species}.total.cryptics.gff
 		#reduced version	
-		GFF=${results}/${code}_${species}_${code}.reduced.total.gff
+		GFF=${results}/${code}_${species}.reduced.total.gff
 Step3_master_jobscript=${clusterFolder}/submission/Step3_count_${code}.sh
 
 step3_num=`wc -l ${support} | awk '{print $1 -1}' `
@@ -437,7 +447,7 @@ awk 'NR >1{print $1,$2,$3,$4}' $support | while read sample bam dataset conditio
 #python $pycount --stranded=${countStrand} -p ${paired} -f bam -r pos $GFF $bam ${output}
 
 # FeatureCounts implementation - should be faster!
-Rscript $featureCounts --bam ${bam} --countStrand ${countStrand} --paired ${paired} --gff ${GFF} --output ${output} 
+Rscript $featureCounts --bam ${bam} --countStrand ${countStrand} --paired ${paired} --gff ${GFF} --output ${output} 2>&1
 
 
 echo \"Step 3 finished for $sample at \`date +%H:%M:%S\` \" >> $report_file 
@@ -507,9 +517,9 @@ DEXSeqFolder=${results}/dexseq
 if [ ! -e $DEXSeqFolder ]; then mkdir $DEXSeqFolder; fi
 support_frame=${DEXSeqFolder}/${dataset}_dexseq_frame.tab
 jobscript=${clusterFolder}/submission/DEXSeq_${dataset}.sh
-GFF=${results}/${dataset}/GFF/${code}_${species}_${dataset}.total.cryptics.gff
+#GFF=${results}/${dataset}/GFF/${code}_${species}_${dataset}.total.cryptics.gff
 #new GFF
-GFF=${results}/${code}_${species}_${code}.reduced.total.gff
+GFF=${results}/${code}_${species}.reduced.total.gff
 keepSex=TRUE
 keepDups=FALSE
 cryptic=TRUE
@@ -637,7 +647,7 @@ for dataset in `cat $support | awk 'NR > 1{print $3}' | uniq `;do
 		awk -v dataset=$dataset 'NR == 1 {print $0} $3 == dataset {print $0}' $support > ${support_frame}
 		echo "
 echo $condition_names
-${Rbin}script ${R_splice_junction_analyzer} --support.frame ${support_frame} --code ${dataset} --species $species --condition.names ${condition_names} --dexseq.res ${dexseq_res} --outFolder ${SJoutFolder}  > ${error_file} 2>&1
+${Rbin}script ${R_splice_junction_analyzer} --support.frame ${support_frame} --code ${code} --species $species --condition.names ${condition_names} --dexseq.res ${dexseq_res} --outFolder ${SJoutFolder}  > ${error_file} 2>&1
 " >> $jobscript
 	fi
 #different datasets have different conditions (CTL vs HET, CTL vs HOM etc. Run SJ analysis for each.)
@@ -692,10 +702,12 @@ dataset_num=`cat $support | awk 'NR > 1{print $3}' | uniq | wc -l`
 
 Step4c_jobID=Step4c_${code}
 
+DEXSeqFolder=${results}/dexseq
+SJoutFolder=${results}/splice_junction_analysis
 echo "
 #$ -S /bin/bash
-#$ -l h_vmem=4G
-#$ -l tmem=4G
+#$ -l h_vmem=6G
+#$ -l tmem=6G
 #$ -l h_rt=36:00:00
 #$ -pe smp 1
 #$ -R y
@@ -726,28 +738,70 @@ for dataset in `cat $support | awk 'NR > 1{print $3}' | uniq `;do
 			echo "
 #ENRICHMENT ANALYSIS FOR ${dataset}
 " > $jobscript
-#different datasets have different conditions (CTL vs HET, CTL vs HOM etc. Run enrichment analysis for each.)
-	for i in `ls ${results}/dexseq/`;do
-		if [[ $i =~ .*[\.][a-z]+ ]];then
-		echo "$i is not a valid set of conditions"
-		continue;fi
-		condition_names=`echo $i | awk -F"/" '{print $(NF-1)}'`
-		echo $condition_names
-		SJAnalysis_res=${SJAnalysisFolder}/${dataset}_${condition_names}_splicing_analysis.tab
-        if [ ! -e ${SJAnalysis_res} ]; then
-        	echo cannot find ${SJAnalysis_res}
-        fi
-		
-		support_frame=${outFolder}/${dataset}_support_frame.tab
-		error_file=${clusterFolder}/R/retrotransposon_enrichment_${dataset}.out
 
-		awk -v dataset=$dataset 'NR == 1 {print $0} $3 == dataset {print $0}' $support > ${support_frame}
-
-		echo "
+ # first check if the support only has two conditions
+	support_conditions=` awk 'NR > 1 {print $4 } ' $support | sort | uniq `
+    	condition_length=`echo $support_conditions | awk '{print NF }' `
+    	echo $support_conditions
+    	echo $condition_length
+        if [ ${condition_length} -lt 3 ];then
+                echo "two conditions found in the support - will assume the order"
+                condition_names=` echo $support_conditions | tr ' ' '_' `
+                dexseq_res=${DEXSeqFolder}/${condition_names}/${dataset}_${condition_names}_SignificantExons.csv
+                support_frame=${SJoutFolder}/${dataset}_support_frame.tab
+                error_file=${clusterFolder}/R/Feature_enrichment_${dataset}.out
+                awk -v dataset=$dataset 'NR == 1 {print $0} $3 == dataset {print $0}' $support > ${support_frame}
+                
+        if [[ "$retrotransposons" != "no" ]];then
+                echo "
 echo $condition_names
 ${Rbin}script ${R_retrotransposon_enrichment} --support.frame ${support_frame} --code ${dataset} --species $species --condition.names ${condition_names} --outFolder ${outFolder}  > ${error_file} 2>&1
 " >> $jobscript
-			done
+		fi
+		if [[ "$CLIP" != "no" ]];then
+               	echo "
+echo "CLIP enrichment"
+${Rbin}script ${R_CLIP_enrichment} --CLIP  ${CLIP} --support.frame ${support_frame} --code ${dataset} --species $species --condition.names ${condition_names} --outFolder ${outFolder}  > ${error_file} 2>&1
+" >> $jobscript
+		fi
+		if [[ "$conservation" != "no" ]];then
+				echo "
+echo "conservation"
+${Rbin}script ${R_conservation} --code ${dataset} --species ${species} --outFolder ${outFolder} --condition.names ${condition_names}
+" >> $jobscript
+        fi
+
+        fi
+
+#different datasets have different conditions (CTL vs HET, CTL vs HOM etc. Run enrichment analysis for each.)
+# 	for i in `ls ${results}/dexseq/`;do
+# 		if [[ $i =~ .*[\.][a-z]+ ]];then
+# 		echo "$i is not a valid set of conditions"
+# 		continue;fi
+# 		condition_names=`echo $i | awk -F"/" '{print $(NF-1)}'`
+# 		echo $condition_names
+# 		SJAnalysis_res=${SJAnalysisFolder}/${dataset}_${condition_names}_splicing_analysis.tab
+#        		if [ ! -e ${SJAnalysis_res} ]; then
+#         		echo cannot find ${SJAnalysis_res}
+#         	fi
+		
+# 		support_frame=${outFolder}/${dataset}_support_frame.tab
+# 		error_file=${clusterFolder}/R/retrotransposon_enrichment_${dataset}.out
+
+# 		awk -v dataset=$dataset 'NR == 1 {print $0} $3 == dataset {print $0}' $support > ${support_frame}
+
+# 		echo "
+# echo $condition_names
+# echo "retrotransposon enrichment"
+# ${Rbin}script ${R_retrotransposon_enrichment} --support.frame ${support_frame} --code ${dataset} --species $species --condition.names ${condition_names} --outFolder ${outFolder}  > ${error_file} 2>&1
+# 	" >> $jobscript
+# 		if [[ "$CLIP" != "no" ]];then
+# 			echo "
+# echo "CLIP enrichment"
+# ${Rbin}script ${R_CLIP_enrichment} --CLIP  ${CLIP} --support.frame ${support_frame} --code ${dataset} --species $species --condition.names ${condition_names} --outFolder ${outFolder}  > ${error_file} 2>&1
+# " >> $jobscript
+# 		fi
+#	done
 
 echo $jobscript >> $Step4c_master_jobscript
 
