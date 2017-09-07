@@ -2,7 +2,11 @@
 
 A set of scripts that identify, quantify and classify cryptic splicing in RNA-seq data.
 
-CryptEx paper is now on BioRxiv: http://biorxiv.org/content/early/2016/09/19/076117
+CryptEx paper is now published! 
+
+## Quantitative analysis of cryptic splicing associated with TDP-43 depletion
+### Jack Humphrey, Warren Emmett, Pietro Fratta, Adrian M. Isaacs and Vincent Plagnol
+https://bmcmedgenomics.biomedcentral.com/articles/10.1186/s12920-017-0274-1
 
 ## Pre-requisites:
 * BEDTools
